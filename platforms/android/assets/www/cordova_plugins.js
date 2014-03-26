@@ -50,6 +50,27 @@ module.exports = [
         ]
     },
     {
+        "file": "plugins/org.apache.cordova.media/www/MediaError.js",
+        "id": "org.apache.cordova.media.MediaError",
+        "clobbers": [
+            "window.MediaError"
+        ]
+    },
+    {
+        "file": "plugins/org.apache.cordova.media/www/Media.js",
+        "id": "org.apache.cordova.media.Media",
+        "clobbers": [
+            "window.Media"
+        ]
+    },
+    {
+        "file": "plugins/de.appplant.cordova.plugin.background-mode/www/background-mode.js",
+        "id": "de.appplant.cordova.plugin.background-mode.BackgroundMode",
+        "clobbers": [
+            "plugin.backgroundMode"
+        ]
+    },
+    {
         "file": "plugins/org.apache.cordova.file/www/DirectoryEntry.js",
         "id": "org.apache.cordova.file.DirectoryEntry",
         "clobbers": [
@@ -187,6 +208,8 @@ module.exports.metadata =
     "org.apache.cordova.vibration": "0.3.7",
     "de.appplant.cordova.plugin.local-notification": "0.7.3dev",
     "org.apache.cordova.file-transfer": "0.4.2",
+    "org.apache.cordova.media": "0.2.9",
+    "de.appplant.cordova.plugin.background-mode": "0.5.0",
     "org.apache.cordova.file": "1.0.1"
 }
 // BOTTOM OF METADATA

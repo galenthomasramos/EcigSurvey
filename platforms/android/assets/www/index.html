@@ -29,7 +29,10 @@
         <script src="js/date.js"></script>
         <script src="js/moment.js"></script>
 
-        <script src="js/aes.js"></script>
+        <script src="js/caesar_cipher.js"></script>
+
+        <!--script src="js/cryptojs/aes.js"></script-->
+        <!--script src="js/cryptojs/aes_302.js"></script-->
 
         <script src="mobiscroll/js/mobiscroll.core.js"></script>
         <script src="mobiscroll/js/mobiscroll.scroller.js" type="text/javascript"></script>
@@ -68,7 +71,7 @@
         var adminPin = '45459';
 
         //var notificationSoundLoc = 'www/audio/notificationsound1.mp3';
-        var notificationSoundLoc = 'android.resource://com.testing.ecigcordova3_3/raw/notificationsound1.mp3';
+        //var notificationSoundLoc = 'android.resource://com.testing.ecigcordova3_3/raw/notificationsound1.mp3';
 
         var TobaccoUseIntFileWriter;
         var randomPromptIntFileWriter;
@@ -86,6 +89,8 @@
         var notificationFileString;
         var loginFileString;
 
+
+
         var delimiter = ', ';
 
         var writingToLoginInfo = false;
@@ -95,10 +100,15 @@
         var writingToBedtime = false;
         var writingToSuspendTime = false;
 
+        //var minSleepTime = 4;
+        //var maxSleepTime = 19;
+
         var minSleepTime = 4;
         var maxSleepTime = 19;
 
         var didMissNotificationArr = [];
+        var didMissDelayedNotification = true;
+        var didMissWakeUp = true;
 
         var stringToWrite = '';
 
@@ -110,12 +120,16 @@
         var timeStamp;
 
         var bufferMins = 15;
+        //var bufferMins = 2;
 
+        //var surveysInADay = 50 ;
         var surveysInADay = 7;
+
         var currentSurveyTaken = -1;
         var noOfSurveysTaken = 0;
 
         var my_media = null;
+        var my_alarm_media = null;
 
         var hasMissedNotification = false;
         var missedNotifications = 0;
@@ -124,29 +138,35 @@
         var notificationCount = 0;
 
         var notificationTimes = [];
-        var lastCancelledNotification;//holds id of the last canceled notification
 
         var takingTestSurvey = false;
 
-        //Used to create notifications at a default time, if a bedTime has not been set yet
-        //var defaultWakeTime = moment().hours(12).minutes(0).seconds(0);
-        //var defaultBedTime = moment().hours(11).minutes(59).seconds(0);
-        //defaultBedTime.add('days', 1);
+        var startedRandomPromptSurvey = false;
+        var finishedRandomPromptSurvey = false;
+
+
 
         var defaultWakeTime = moment().hours(0).minutes(0).seconds(0);
         var defaultBedTime = moment().hours(23).minutes(59).seconds(0);
 
         //variables used to determine notification beginning and end times:
-        var wakeTimeDate;// = moment().hours(8).minutes(0).seconds(0);
-        var bedTimeDate;// = moment().hours(23).minutes(0).seconds(0);
-        var timeAsleep;
+        var wakeTimeDate = moment(defaultWakeTime);
+        var bedTimeDate = moment(defaultBedTime);
+        var timeAsleep = 1;
+        var timeAwake = Math.abs(timeAsleep - (24 * 60));
 
-        var currentlyDelaying = false;
+        var states = {
+            ACTIVE:      0,
+            ASLEEP:      1,
+            DELAYED:     2,
+            SUSPENDED:   3
+        };
 
-        var resumeTime;//holds time value at which the application will return to a normal state... after being delayed, suspended, or asleep for so long.
+        var wakeUpFiring = false;
 
-        //Date object that holds date time of last period of surveys
-        var enddate;
+        var currentState = states.ACTIVE;
+
+        var resumeTime = null;//holds time value at which the application will return to a normal state... after being delayed, suspended, or asleep for so long.
 
         //console.log("wakeTime: " + wakeTimeDate.format());
         //console.log("bedTime: " + bedTimeDate.format());
@@ -182,18 +202,17 @@
 
         var delayData = {delaymins:""};
         var delayTemplate = '<h3>Do you want to do the survey now or delay it?</h3>\
-                             <a href="#login" data-role="button" data-icon="bars" onclick="startRandomPromptInterview()">Do the survey now</a>\
+                             <a href="#" data-role="button" data-icon="bars" onclick="startRandomPromptInterview()">Do the survey now</a>\
                              <div id="delaydiv" data-role="controlgroup" data-type="horizontal">\
                                     <label for="select-choice-1">Select a delay amount:</label>\
                                 	<select name="select-choice-1" id="select-choice-1" data-icon="arrow-d" data-iconpos="left">\
-                                        <option value="5">5 minutes</option>\
-                                        <option value="10">10 minutes</option>\
-                                        <option value="15">15 minutes</option>\
-                                        <option value="20">20 minutes</option>\
+                                        <option value="5">5 mins</option>\
+                                        <option value="10">10 mins</option>\
+                                        <option value="15">15 mins</option>\
+                                        <option value="20">20 mins</option>\
                                     </select>\
-                                    <a href="#" data-role="button" data-icon="check" onclick="delayNotification()">Delay notification</a>\
+                                    <a href="#" data-role="button" data-icon="check" onclick="delayNotification(false)">Delay notification</a>\
                              </div>';
-
 
         var visitedEmoSurveyA = false;
         var visitedEmoSurveyB = false;
@@ -800,12 +819,11 @@
                                     <fieldset data-role="fieldcontain">\
                                         <label for="suspend-select1">Select suspend amount</label>\
                                         <select name="suspend-select1" id="suspend-select1" data-native-menu="false">\
-                                            <option value="30">30 Minutes</option>\
-                                            <option value="60">60 Minutes</option>\
-                                            <option value="90">1.5 Hours</option>\
-                                            <option value="120">2 Hours</option>\
-                                            <option value="240">4 Hours</option>\
-                                            <option value="-1">Cancel suspension</option>\
+                                            <option value="30">30 mins</option>\
+                                            <option value="60">60 mins</option>\
+                                            <option value="90">1.5 hrs</option>\
+                                            <option value="120">2 hrs</option>\
+                                            <option value="240">4 hrs</option>\
                                         </select>\
                                     \
                                         <label for="suspend-select2">Select the reason for suspension</label>\
@@ -913,6 +931,7 @@
                             </div>';
 
 
+
 		$(document).on("pageinit",function(){
 
             $(".jquerymobileslider").on("change", function () {
@@ -966,12 +985,22 @@
                 headerText: 'Set your wake time'
             });
 
+
+            $('#wscroller').mobiscroll({preset: 'time', onSelect: function(valueText, inst){
+                console.log(valueText);
+
+
+
+            }});
             $('#wscroller').mobiscroll('option', { stepMinute: 5 });
+
+
 
 
             $("#delay").on("pagecreate", function(){
                 var html = Mustache.to_html(delayTemplate, delayData);
                 $("#delaycontent").html(html);
+                //$("#ajaxSpinner").hide("fast");
             });
 
 
@@ -1097,8 +1126,11 @@
 
 			$("#wakeTime").on("pagecreate",function(){
 				var html3 = Mustache.to_html(wakeTimeTemplate, wakeTimedata);
-
                 $("#wakeTimecontent").html(html3);
+
+                $('#wscroller').mobiscroll({onSelect: function(valueText, inst){
+                    console.log(valueText);
+                }});
 			});
 
 			$("#problemreport").on("pagecreate",function(){
@@ -1113,14 +1145,73 @@
 				$("#referencecontent").html(html5);
 			});
 
+            $("#wakeup").on("pagecreate",function(){
+                $("#button-wakeup").css('height','100px');
+                $("#button-wakeup").children().children().css('font-size','40px');
+                $("#button-snooze").css('height','100px');
+                $("#button-snooze").children().children().css('font-size','40px');
+            });
+
 		});
 
+        $(document).on('pagebeforecreate', '[data-role="page"]', function(){
+            setTimeout(function(){
+                $.mobile.loading('show');
+            },1);
+        });
+
+        $(document).on('pageshow', '[data-role="page"]', function(){
+            setTimeout(function(){
+                $.mobile.loading('hide');
+            },300);
+        });
+
+
+
+        function loadingDelay(){
+            $.mobile.loading('show', {
+                text: "loading",
+                textVisible: true
+            });
+
+            console.log("\nloadingDelay");
+        }
+
+
+        function loadingDelayIsDone(){
+            $.mobile.loading("hide");
+            console.log("\nloadingDelayIsDone");
+        }
+
+
         function userHasGoneIdle(){
+
+            window.plugin.backgroundMode.enable();
+
+            //If user goes idle and has started a random prompt survey but has not finished it before going idle,
+            //Need to record a survey as being abandoned
+            if(startedRandomPromptSurvey && !finishedRandomPromptSurvey){
+
+                //If a user delays a notification, don't want to add to missing notifications file yet.
+                if(currentState != states.DELAYED){
+                    hasMissedNotification = true;
+                    addToMissedNotifications(1, moment().toDate().toString());
+                    startedRandomPromptSurvey = false;
+                    finishedRandomPromptSurvey = false;
+                }
+                //If a user clicks a notification (indicates that they have started a random prompt interview), delays notification,
+                //then misses the delayed notificaiton, it will register both an abandoned as well as a missed, when really they have only missed
+                //the last delayed notification
+
+            }
+
             writingToRandomPromptInt = false;
             $("#login-password").val('');
 
-            $.mobile.navigate('#login');
-
+            if(!wakeUpFiring)
+                $.mobile.navigate('#login');
+            else
+                $.mobile.navigate('#wakeup');
             resetSurveyWidgets();
 
             console.log('userHasGoneIdle');
@@ -1133,22 +1224,124 @@
         function onResumeApp(){
             console.log('\nonResumeApp()');
 
+            console.log("timeAsleep: " + timeAsleep);
+
+            console.log("timeAwake: " + timeAwake);
+
+            /*
+            window.plugin.notification.local.getScheduledIds( function (scheduledIds) {
+                 console.log('Scheduled IDs: ' + scheduledIds.join(' ,'));
+            });
+            */
+
             //Check to see if there is a suspension time set, if so, check to see if that time has passed, if so, resume normal app behavior
             if(resumeTime != null){
+
+                //in the case of delaying a notification, need to change currentState to active through a timeout function...
+                // otherwise causes error in how missing a delayed a notification counts more than once
                 if(moment().isAfter(resumeTime)){
-                    displayAppStatus('cancel');
+                    currentState = states.ACTIVE;
+                    displayAppStatus(states.ACTIVE);
                     resumeTime = null;
-                }
-                else if(moment().isAfter(bedTimeDate)){
-                    displayAppStatus('bedtime');
                 }
             }
 
             if (hasMissedNotification){
-                alert("You have missed " + missedNotifications + " randomized surveys. This has been logged.");
+                alert("You have missed " + missedNotifications + " random prompt survey(s). Please remember to take as many surveys as possible.");
                 hasMissedNotification = false;
                 missedNotifications = 0;
             }
+
+            //Need to check size of scheduledIds, if it is zero, then that means the the user has cleared notifications
+            //from the Android clear device button... need to repopulate all new notifications
+
+
+            window.plugin.notification.local.getScheduledIds( function (scheduledIds) {
+                //if no, or only one notification to be scheduled, repopulate
+
+                console.log("LENGTH OF scheduledIds: " + scheduledIds.length);
+                console.log("@ onResume notificationCount: " + notificationCount);
+
+
+                //IN CASE OF # of NOTIFICATIONS REACHING 0, REPOPULATE
+                // Also,
+                //ODD BUG WHERE NOTIFICATIONS WILL NOT BE CLEARED PRIOR TO BEING ADDED... GENERALLY MORE THAN 2x SURVEYSINADAY will be added with duplicate notifications in a day
+                //2.5 because num would be greater than 2x surveysaday, but delaying a notification will also increase length, so there could legitimately be more than 2x surveys a day
+                if(scheduledIds.length <= 1 || scheduledIds.length > parseInt(2.5 * surveysInADay)){
+                  //while(scheduledIds.length == 0){
+
+                    if(currentState == states.DELAYED){
+
+                        //With no notifications now, addNewNotifications and remove the one that might be before the resumeTime, but after now
+                        //Then add a notification at resume time
+                        clearPriorNotifications(function(){
+                            addNewNotifications(function(){
+                                //difference between number of notifications actually added and number of notification times partitioned:
+                                var diff = Math.abs(notificationCount - notificationTimes.length);
+                                var translatedIndex;
+
+                                console.log('\nnotificationCount: ' + notificationCount);
+                                console.log('\nnotificationsLen:  ' + notificationTimes.length);
+
+                                console.log('\ndiff: ' + diff);
+
+                                for(var i = 0; i < notificationTimes.length; i++){
+
+                                    //notification IDs are stored by the actual count of the notification, not from the notification index of their related time
+                                    if (notificationTimes[i].isAfter(now) && notificationTimes[i].isBefore(resumeTime)){
+                                        //translatedIndex is also the id of notification to cancel
+                                        console.log('\ni:    ' + i);
+                                        console.log('\ndiff: ' + diff);
+                                        translatedIndex = (i - diff) + 1;
+                                        console.log('\ntranslatedIndex: ' + translatedIndex);
+
+                                        window.plugin.notification.local.cancel(translatedIndex);
+
+                                        delayNotification(true);
+
+                                        break;
+                                    }
+                                }
+
+                                formNotificationString(writeToNotificationFile);
+                            });
+                        })
+                    }
+
+                    else if(currentState == states.SUSPENDED){
+                        clearPriorNotifications(function(){
+                            addNewNotifications(function(){
+                                formNotificationString(writeToNotificationFile);
+                                suspendNotifications(true);
+                            })
+                        });
+                    }
+
+
+                    else if(currentState == states.ASLEEP){
+                        clearPriorNotifications(function(){
+                            addNewNotifications(function(){
+                                formNotificationString(writeToNotificationFile);
+                            });
+                        });
+                    }
+
+                    else if(currentState == states.ACTIVE){
+                        clearPriorNotifications(function(){
+                            addNewNotifications(function(){
+                                formNotificationString(writeToNotificationFile);
+                            });
+                        });
+                    }
+
+
+
+
+                }
+
+
+            });
+
         }
 
 		function onLoad() {
@@ -1160,81 +1353,143 @@
 		function onDeviceReady() {
             console.log("WITHIN onDeviceReady()");
 
+            //playNotificationAudio(media_loc);
+
+
             //$.mobile.navigate('#productUrgeSurvey');
 
-            determineWakeTimeBedTime();
+            //determineWakeTimeBedTime();
 
             window.plugin.notification.local.onadd = function(id, state, json){
-                //console.log('\nonadd() has been triggered id: ' + id.toString());
+                //console.log('\nonadd() adding #: ' + id.toString());
                 //console.log('\nJSON date: ' + JSON.parse(json).date);
-                //console.log('\nadding notification #' + id + ' @');// + JSON.parse(json).date);
+                console.log('\nonadd() adding #' + id + ' fires @ ' + JSON.parse(json).date);
 
             };
 
-
             window.plugin.notification.local.ontrigger = function (id, state, json) {
-                console.log('\ntriggering notification #' + id);// + ' @' + JSON.parse(json).date);
+                console.log('\nontrigger() #' + id + " State: " + state + " @" + moment().toString());// + ' @' + JSON.parse(json).date);
 
-                if(Math.abs(id - notificationCount) == 0 || notificationCount == 0){
-                    console.log('id - notificationCount == 0, id =' + id.toString());
+                if(Math.abs(id >= notificationCount - 1 || notificationCount == 0)){
+                    console.log('id - notificationCount == 0:' + id + ' - ' + notificationCount + ' = ' + (id - notificationCount));
 
-                    clearPriorNotifications(addNewNotifications);
-                    formNotificationString(writeToNotificationFile);
+                    clearPriorNotifications(function(){
+                        addNewNotifications(function(){
+                            formNotificationString(writeToNotificationFile);
+                        });
+                    });
                 }
 
                 triggerTime = moment().toDate().toString();
 
-                //playAudio('audio/notification_tone_3min.mp3');
+                if(id == 0)
+                    didMissDelayedNotification = true;
+
+                if(id != -99){
+                    playNotificationAudio();
+                }
+                //In the case that the user does not access app when an alarm goes off by clicking notification,
+                //Have app navigate to wakeup screen
+                else{
+                    playAlarmAudio();
+                    didMissWakeUp = true;
+                    wakeUpFiring = true;
+                    $.mobile.navigate("#wakeup");
+                }
 
                 setTimeout(function(){
-                    //triggerTime = JSON.parse(json).date;
+                    if(id != -1 && id != -99){
+                            //if Havent clicked on a notificaiton, and the notificaiton snt a delayed notificaiton,
+                            if(didMissNotificationArr[parseInt(id)] && id != 0){
+                                console.log("@onTrigger: didMissNotificationArr[" + id + "] = " + didMissNotificationArr[id]);
+                                hasMissedNotification = true;
+                                addToMissedNotifications(2, triggerTime);
+                                window.plugin.notification.local.cancel(id);
+                            }
+                            //for missed delayed notifications, only log missed if not clicked and only cancel if not clicked (and therefore cnaceled)
+                            else if(id == 0 && didMissDelayedNotification){
+                                console.log("@onTrigger: didMissDelayedNotification = " + didMissDelayedNotification);
+                                hasMissedNotification = true;
+                                addToMissedNotifications(2, triggerTime);
+                                window.plugin.notification.local.cancel(id);
+                            }
 
-                    console.log('\nMissed Notification ' + id + "at " + triggerTime);
-
-                    if(didMissNotificationArr[parseInt(id)]){
-                        addToMissedNotifications(2, triggerTime);
                     }
-
-                    window.plugin.notification.local.cancel(id);
+                    //Need to set boolean to remain at #wakeup, regardless of whether or not the user leaves the app during
+                    //wakeup alarm
+                    else if(id == -99 && didMissWakeUp){
+                        wakeUpFiring = false;
+                        window.plugin.notification.local.cancel(id);
+                    }
+                    else if(id == -1)
+                        window.plugin.notification.local.cancel(id);
 
                 }, (180 * 1000));
+                //}, (60 * 1000));
             };
 
             window.plugin.notification.local.onclick = function(id, state, json){
 
-                $.mobile.navigate('#delay');
                 console.log('\n clicking notification #' + id);
                 //notificationTime = JSON.parse(json).date;
-                didMissNotificationArr[parseInt(id)] = false;
+
+                //When clicking on a delayed notification
+                if(id == 0){
+                    $.mobile.navigate('#delay');
+                    didMissDelayedNotification = false;
+                    startedRandomPromptSurvey = true;
+                    finishedRandomPromptSurvey = false;
+                }
+
+                //When clicking on a test notification
+                else if(id == -1){
+                    $.mobile.navigate("#login");
+                    takingTestSurvey = true;
+                    startedRandomPromptSurvey = false;
+                    finishedRandomPromptSurvey = false;
+                }
+
+                //When clicking on a wakeup notification
+                else if(id == -99){
+                    $.mobile.navigate("#wakeup");
+                    startedRandomPromptSurvey = false;
+                    finishedRandomPromptSurvey = false;
+                }
+
+                //When clicking on a standard, untouched notification
+                else{
+                    $.mobile.navigate('#delay');
+                    startedRandomPromptSurvey = true;
+                    finishedRandomPromptSurvey = false;
+                    didMissNotificationArr[parseInt(id)] = false;
+                }
 
                 //test if the clicked notification is from the reference page... in which case no need to enable auto survey
 
-                if(id == -1){
-                    takingTestSurvey = true;
-                }
-
-                //console.log("writting to randomPromptInterview: " + writingToRandomPromptInt);
-                if (hasMissedNotification){
-                    alert("You have missed " + missedNotifications + " randomized surveys. This has been logged.");
-                    hasMissedNotification = false;
-                    missedNotifications = 0;
-                }
             };
 
-
-
-
             window.plugin.notification.local.oncancel = function (id, state, json) {
-                lastCancelledNotification = id;
-                console.log('\n cancelling notification #' + id);
+                console.log('\n CANCELLING notification #' + id + " State: " + state);
+                //console.log("caller is " + arguments.callee.caller.toString());
 
-
-                if(my_media){
-                    my_media.stop();
+                if(id != -99){
+                    if(my_media){
+                        my_media.stop();
+                        //my_media.reset();
+                        my_media.release();
+                    }
                 }
 
-                //console.log('\n cancelling notification #' + id + ' @' + JSON.parse(json).date);
-
+                //If wake up alarm notificaiton:
+                else{
+                    wakeUpFiring = false;
+                    //$.mobile.navigate("#login");
+                    if(my_alarm_media){
+                        my_alarm_media.stop();
+                        //my_media.reset();
+                        my_alarm_media.release();
+                    }
+                }
             };
 
             document.addEventListener("pause", userHasGoneIdle , false);
@@ -1244,17 +1499,21 @@
             determineWhichLogin();
 
             //setTimeout because I am apparently using callback functions incorrectly...
-            setTimeout(function(){
-                        clearPriorNotifications(addNewNotifications);
-                        formNotificationString(writeToNotificationFile);
-                    }, 1000);
+
+            clearPriorNotifications(function(){
+                addNewNotifications(function(){
+                    formNotificationString(writeToNotificationFile);
+                });
+            });
 
         }
 
 
 
+
         function clearPriorNotifications(callback){
             console.log("\nclearPriorNotifications()");
+            //console.log("caller is " + arguments.callee.caller.toString());
 
             notificationCount = 0;
             notificationTimes = [];
@@ -1262,31 +1521,52 @@
             window.plugin.notification.local.cancelAll();
 
             if (typeof callback === "function"){
+
+                setTimeout(function(){
                 callback();
+
+                }, 3 * 1000);
+                /*
+                setTimeout(function(){
+
+                    window.plugin.notification.local.getScheduledIds(function(schedIDS){
+                        console.log("Length of ScheduleIds after callback");
+                    })
+
+                }, 10 * 1000);
+
+
+                window.plugin.notification.local.getScheduledIds(function(schedIDS){
+                    console.log("Length of ScheduleIds after callback: " + schedIDS.length);
+                })
+                 */
             }
+
+            /*
+            setTimeout(function(){
+
+                window.plugin.notification.local.getScheduledIds(function(schedIDS){
+                    console.log("Length of ScheduleIds before callback");
+                })
+
+            }, 7 * 1000);
+
+
+            window.plugin.notification.local.getScheduledIds(function(schedIDS){
+                console.log("Length of ScheduleIds before callback: " + schedIDS.length);
+            })
+             */
+        }
+
+        function vibrate(amt) {
+            navigator.notification.vibrate(amt * 1000);
+        }
+        function playBeep(amt) {
+            navigator.notification.beep(amt);
         }
 
         function exitFromApp(){
             navigator.app.exitApp();
-        }
-
-        function playAudio(url) {
-            // Play the audio file at url
-            if(my_media == null){
-
-                my_media = new Media(url,
-                        // success callback
-                        function () {
-                            console.log("playAudio():Audio Success");
-                        },
-                        // error callback
-                        function (err) {
-                            console.log("playAudio():Audio Error: " + err);
-                        }
-                );
-                // Play audio
-            }
-            my_media.play();
         }
 
         //if Bed exists, grab those two variables from the strings within the file and set as bedTimeDate and wakeTimeDate
@@ -1294,16 +1574,16 @@
         function determineWakeTimeBedTime(callback){
             //console.log('\ndetermineWakeTimeBedTime()');
 
-            exists('Bed.txt', function(value){
+            exists('Bed.bed', function(value){
                 if(value){
 
                     console.log("Bed found");
 
                     window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fs){
                         var entry = fs.root;
-                        entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                        entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                            directory.getFile('Bed.txt', null, function(fe){
+                            directory.getFile('Bed.bed', null, function(fe){
                                 //console.log('\nwithin readFromFile wakeTimeBedTime getFile()');
                                 fe.file(function(file){
                                     //console.log('\nwithin readFromFile wakeTimeBedTime file()');
@@ -1343,7 +1623,7 @@
 
                                         //if turning on phone during 'bedtime', update login screens appearance to reflect that and set resumetime
                                         if(moment().isAfter(bedTimeDate)){
-                                            displayAppStatus('bedtime');
+                                            displayAppStatus(states.ASLEEP);
                                             resumeTime = moment(bedTimeDate).add('minutes', timeAsleep);//set time at which login screen should be updated with 'active' appearance
                                         }
 
@@ -1359,7 +1639,7 @@
                 }
 
                 else{
-                    console.log("Bed.txt NOT found");
+                    console.log("Bed.bed NOT found");
 
                     bedTimeDate = defaultBedTime;
                     wakeTimeDate = defaultWakeTime;
@@ -1380,10 +1660,10 @@
 
 
         function addNewNotifications(callback){
-            //console.log("\naddNewNotifications");
+            console.log("\naddNewNotifications");
             now = moment();
 
-            setPartitionNotificationsForDays(2, notificationCheckAndAdd);
+            setPartitionNotificationsForDaysV2(2, notificationCheckAndAdd);
 
             console.log('notificationCount: ' + notificationCount.toString());
 
@@ -1401,9 +1681,42 @@
         }
         */
 
+        function playNotificationAudio() {
+
+            console.log(getPhoneGapFilePath() + 'notification_tone_3min.mp3');
+
+            my_media = new Media( getPhoneGapFilePath() + 'notification_tone_3min.mp3');
+
+            if(my_media){
+                my_media.play();
+                my_media.setVolume('1.0');
+            }
+        }
+
+        function playAlarmAudio() {
+
+            console.log(getPhoneGapFilePath() + 'alarm_audio_3min.mp3');
+
+            my_alarm_media = new Media( getPhoneGapFilePath() + 'alarm_audio_3min.mp3');
+
+            if(my_alarm_media){
+                my_alarm_media.play();
+                my_alarm_media.setVolume('1.0');
+            }
+        }
+
+
+        function getPhoneGapFilePath() {
+
+            var path = window.location.pathname;
+            path = path.substr( path, path.length - 10 );
+            return 'file://' + path;
+        };
+
+
 
         //Called upon setting the waketime... will clear all notifications for that day, to be resumed at waketime set
-        function checkAndSetWakeTime(callback){
+        function setWakeTime(){
             var wScrollVal;
             var delimiter = '\n';
             var hour, minute, ampm;
@@ -1430,6 +1743,7 @@
             if(tempWakeTime.isAfter(tempBedTime)){
                 //timeAsleep = moment(tempBedTime).from(tempWakeTime, true);
                 timeAsleep = Math.abs(moment(tempBedTime).diff(tempWakeTime, 'minutes'));
+                timeAwake = Math.abs(timeAsleep - (24 * 60));
                 console.log(timeAsleep);
                 tempBedTime.add('days', 1);
             }
@@ -1441,6 +1755,7 @@
 
                 //timeAsleep = moment(tempBedTime).from(tempWakeTime, true);
                 timeAsleep = Math.abs(moment(tempBedTime).diff(tempWakeTime, 'minutes'));
+                timeAwake = Math.abs(timeAsleep - (24 * 60));
                 console.log(timeAsleep);
                 tempBedTime.add('days', 1);
             }
@@ -1451,6 +1766,9 @@
             //timeAsleep is number of minutes of bedtime duration
             //Must not allow user to sleep for less than minSleepTime nor sleep longer than maxSleepTime
             if((Math.abs(timeAsleep) > 60 * minSleepTime) && (Math.abs(timeAsleep) < 60 * maxSleepTime)){
+                $("#waketimesubmit").attr("href","#popupWakeTime");
+                currentState = states.ASLEEP;
+                displayAppStatus(states.ASLEEP);
 
                 wakeTimeDate = tempWakeTime;
                 bedTimeDate = tempBedTime;
@@ -1458,60 +1776,286 @@
                 var timesStr;
                 timesStr = wakeTimeDate.toString() + delimiter + bedTimeDate.toString();
 
-                //Test code to try out old dates within Bed.txt
+                //Test code to try out old dates within Bed.bed
                 //timesStr = wakeTimeDate.subtract('days',2).toString() + delimiter + bedTimeDate.subtract('days',2).toString();
 
-                console.log('\nhours asleep: ' + (timeAsleep / 60));
-                console.log('\nnext notification period: ' + tempBedTime.from(tempWakeTime, true));
-                console.log('\nnew wake time: ' + wakeTimeDate.toString() + '\nnew bed time: ' + bedTimeDate.toString());
+                console.log('\nupcoming hours awake:      ' + timeAwake);
+                console.log('\nhours asleep:              ' + (timeAsleep / 60));
+                console.log('\nnext notification period:  ' + tempBedTime.from(tempWakeTime, true));
+                console.log('\nnew wake time:             ' + wakeTimeDate.toString() + '\nnew bed time: ' + bedTimeDate.toString());
 
-                clearPriorNotifications(addNewNotifications);
+                clearPriorNotifications(function(){
+                    addNewNotifications(function(){
+                        formNotificationString(writeToNotificationFile);
+                    });
+                });
 
+                /*
                 setTimeout(function(){
                     writeToWakeTimeBedTimeFile(timesStr, false);
                 }, 2 * 1000);
+                */
+                //Need to add three minutes here for the period of time that the alarm will fire,
+                //otherwise if a user enters #wakeup, leaves the app and then resumes, will be at login screen(active),
+                //unable to stop alarm or choose wakeup or snooze
+                resumeTime = moment().add('minutes', timeAsleep + 3);
 
-                displayAppStatus('bedtime');
+                //Set notification at time which alarm will wake user up:
+                window.plugin.notification.local.add({
+                    id:         -99,
+                    date:       moment(resumeTime).subtract('minutes', 3).toDate(),
+                    message:    "Tap to wake up or snooze",
+                    title:      'Application wake up',
+                    autoCancel: false,
+                    sound:      null,
+                    json:       JSON.stringify({ date: moment(resumeTime).subtract('minutes', 3).toString()})
+                });
 
-                resumeTime = wakeTimeDate;
+                setLoginStatusLabel("Notifications will resume: " + moment(resumeTime).subtract('minutes', 3).format("MMM D, h:mm a"));
 
-                //exitFromApp();
                 $.mobile.navigate('#login');
             }
+
             else if(Math.abs(timeAsleep) < 60 * minSleepTime){
                 alert("Your bedtime must not be shorter than " + minSleepTime + " hours");
-                $("#wscroller").val('');
-                $("#waketimesubmit").attr("href","#");
+                $("#popupWakeTime").popup("close");
+                //$("#wscroller").val('');
+
             }
             else if (Math.abs(timeAsleep) > 60 * maxSleepTime){
                 alert("Your bedtime must not be longer than " + maxSleepTime + " hours");
-                $("#wscroller").val('');
-                $("#waketimesubmit").attr("href","#");
+                $("#popupWakeTime").popup("close");
+                //$("#wscroller").val('');
+
+            }
+        }
+
+        function readUserID(encrypted){
+
+            var loginArr = [];
+
+            exists('Log.log', function(value){
+                if(value){
+                    //console.log("Log.log FOUND");
+
+                        window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fs){
+                            var entry = fs.root;
+                            entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
+
+                                directory.getFile('Log.log', null, function(fe){
+                                    //console.log('within readFromFile getFile()');
+                                    var content;
+
+                                    if(!encrypted){
+
+                                        fe.file(function(file){
+                                        //console.log('within readFromFile file()');
+                                            var reader = new FileReader();
+
+                                            reader.onloadend = function(evt){
+                                                //console.log("Read as text");
+                                                content = evt.target.result;
+                                                //console.log(content);
+
+                                                loginArr = content.split(delimiter);
+                                                userID = loginArr[0];
+                                                console.log(typeof(userID));
+                                                console.log(userID.toString());
+                                            }
+
+                                            reader.readAsText(file);
+                                        }, onFSError);
+                                    }
+                                    else{
+                                        getDecryptedStringFromFileEntry(fe, function(decryptedStr){
+                                            loginArr = decryptedStr.split(delimiter);
+
+                                            userID = loginArr[0];
+                                            console.log(typeof(userID));
+                                            console.log(userID.toString());
+                                        });
+                                    }
+                                }, onFSError);
+                            }, onGetDirectoryFail);
+                        }, onFSError);
+
+
+                }
+
+            });
+        }
+
+
+        //First, check if login file exists, if it does and has contents,
+        function checkLoginV2(){
+            //set up writing permissions:
+            var fileContents;
+            var loginArr = [];
+            var p = $("#login-password").val();
+            //check if Log.log exists, if so then read the text file and save the contents to a string
+
+            //if admin pin entered, then navigate to admin profile
+            if ($("#login-password").val() == adminPin){
+                readUserID(true);
+                $.mobile.navigate('#administrator');
+            }
+
+            //otherwise check user entered pin
+            else{
+                exists('Log.log', function(value){
+
+                    //if no log.log file, then must be new user
+                    if(value){
+                        //console.log("Log.log FOUND");
+
+                        window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fs){
+
+                            var entry = fs.root;
+                            entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
+
+                                directory.getFile('Log.log', null, function(fe){
+                                    //console.log('within readFromFile getFile()');
+
+                                    //if wanting to decrypt login before comparing to user input...
+                                    getDecryptedStringFromFileEntry(fe, function(decryptedStr){
+
+                                        loginArr = decryptedStr.split(delimiter);
+
+                                        console.log("decrypted userID: " + loginArr[0] + "\ndecrypted password: " + loginArr[1]);
+
+                                        //If user has entered correct password:
+                                        if(loginArr[1] == p){
+
+                                            userID = loginArr[0];
+
+                                            //WHEN LOGGING IN:
+
+                                            //if app is currently delaying a notification
+                                            if(currentState == states.DELAYED){
+                                                breakDelay();
+                                            }
+
+                                            //if app is currently suspended
+                                            else if(currentState == states.SUSPENDED){
+                                                breakSuspend();
+                                            }
+
+                                            //if app is currently asleep
+                                            else if(currentState == states.ASLEEP){
+                                                breakSleep();
+                                            }
+
+                                            //If user has touched notification to take RPT
+                                            else if(writingToRandomPromptInt){
+                                                $.mobile.navigate("#emoSurveyA");
+                                            }
+                                            //If user has opened app on their own
+                                            else{
+                                                $.mobile.navigate("#main");
+                                            }
+
+
+                                            $("#login-password").val('');
+                                        }
+                                        else if ((p == '')){
+                                            alert("Must enter a password");
+                                            //$("#login-button").attr("href","#login");
+                                            $.mobile.navigate('#login');
+                                            $("#login-password").val('');
+                                        }
+                                        else{
+                                            alert("Incorrect login information");
+                                            //$("#login-button").attr("href","#login");
+                                            $.mobile.navigate('#login');
+                                            $("#login-password").val('');
+                                        }
+                                    });
+
+                                }, onGetDirectoryFail);
+                            }, onFSError);
+                        }, onFSError);
+
+                    }
+                    //if no Log.log file, create it, and write the contents of the two input fields to the text file-  userID, password
+                    else{
+                        //showNewUserLoginScreen();
+                        //console.log("Log.log NOT FOUND");
+
+                        alert("Please enter new user information");
+                        $.mobile.navigate("#login-newuser");
+                    }
+                });
             }
         }
 
 
+
+        //Set state to active, cancel next notification
+        function breakDelay(){
+            currentState = states.ACTIVE;
+            displayAppStatus(states.ACTIVE);
+
+            writingToRandomPromptInt = true;
+            startedRandomPromptSurvey = true;
+            finishedRandomPromptSurvey = false;
+
+            $.mobile.navigate("#emoSurveyA");
+
+            window.plugin.notification.local.cancel(0);
+        }
+
+        function breakSuspend(){
+            currentState = states.ACTIVE;
+            displayAppStatus(states.ACTIVE);
+
+            writingToRandomPromptInt = false;
+            $.mobile.navigate("#main");
+
+            clearPriorNotifications(function(){
+                addNewNotifications(function(){
+                    formNotificationString(writeToNotificationFile);
+                });
+            });
+        }
+
+        function breakSleep(){
+            currentState = states.ACTIVE;
+            displayAppStatus(states.ACTIVE);
+
+            writingToRandomPromptInt = false;
+            $.mobile.navigate("#main");
+
+
+
+            clearPriorNotifications(function(){
+                addNewNotifications(function(){
+                    formNotificationString(writeToNotificationFile);
+                });
+            });
+        }
+        /*
         //First, check if login file exists, if it does and has contents,
         function checkLogin(loginEncrypted){
             //set up writing permissions:
             var fileContents;
             var loginArr = [];
             var p = $("#login-password").val();
-            //check if Log.txt exists, if so then read the text file and save the contents to a string
+            //check if Log.log exists, if so then read the text file and save the contents to a string
 
             if ($("#login-password").val() == adminPin){
+                readUserID(true);
                 $.mobile.navigate('#administrator');
             }
             else{
-                exists('Log.txt', function(value){
+                exists('Log.log', function(value){
                     if(value){
-                        //console.log("Log.txt FOUND");
+                        //console.log("Log.log FOUND");
 
                         window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fs){
                             var entry = fs.root;
-                            entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                            entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                                directory.getFile('Log.txt', null, function(fe){
+                                directory.getFile('Log.log', null, function(fe){
                                     //console.log('within readFromFile getFile()');
                                     var content;
 
@@ -1536,7 +2080,7 @@
                                                     //change display to cancel sleep appearnace, and change bedtime/waketime and
                                                     //Create all ner notifications
                                                     if(moment().isAfter(bedTimeDate)){
-                                                        displayAppStatus('cancel');
+                                                        displayAppStatus(states.ACTIVE);
                                                         wakeTimeDate = moment().hours(0).minutes(0).seconds(0);
                                                         bedTimeDate = moment().hours(23).minutes(59).seconds(0);
 
@@ -1596,7 +2140,7 @@
                                                 //change display to cancel sleep appearnace, and change bedtime/waketime and
                                                 //Create all ner notifications
                                                 if(moment().isAfter(bedTimeDate)){
-                                                    displayAppStatus('cancel');
+                                                    displayAppStatus(states.ACTIVE);
                                                     wakeTimeDate = moment().hours(0).minutes(0).seconds(0);
                                                     bedTimeDate = moment().hours(23).minutes(59).seconds(0);
 
@@ -1639,10 +2183,10 @@
                         }, onFSError);
 
                     }
-                //if no Log.txt file, create it, and write the contents of the two input fields to the text file-  userID, password
+                //if no Log.log file, create it, and write the contents of the two input fields to the text file-  userID, password
                     else{
                     //showNewUserLoginScreen();
-                        //console.log("Log.txt NOT FOUND");
+                        //console.log("Log.log NOT FOUND");
 
                         alert("Please enter new user information");
                         $.mobile.navigate("#login-newuser");
@@ -1650,6 +2194,8 @@
                 });
             }
         }
+        */
+
 
         /*
         function encryptFileWithAES(file, fileWriter){
@@ -1676,6 +2222,31 @@
             return encryptedStr;
         }
 
+        function getDecryptedStringFromFileEntry(fileEntry, callback){
+
+            fileEntry.file(function(file){
+                var content, decrypted, decryptedStr;
+                var reader = new FileReader();
+
+                reader.onloadend = function(e){
+                    content = e.target.result;
+
+                    decrypted = cryptWithCaesar(content, true);
+                    decryptedStr = decrypted.toString();
+                    console.log(decryptedStr);
+
+                    if(typeof(callback === 'function')){
+                        callback(decryptedStr);
+                    }
+                }
+                reader.readAsText(file);
+
+            }, onFSError);
+
+        }
+
+
+        /* old method uses AES
         //returns a decrypted string version of encrypted filecontents
         function getDecryptedStringFromFileEntry(fileEntry, callback){
 
@@ -1699,12 +2270,57 @@
             }, onFSError);
 
         }
+        */
+
+
+
+        function cryptFileWithCaesar(fileEntry, doDecrypt){
+
+            fileEntry.file(function(file){
+
+                console.log("Checkpoint 10 passed, fileEntry type:" + typeof(fileEntry));
+
+                var content, crypted;
+                var reader = new FileReader();
+
+                reader.onloadend = function(e){
+                    console.log("Checkpoint 11 reader has finished loading");
+                    content = e.target.result;
+
+                    console.log("contents of " + file.name + ": " + content);
+
+                    cryptWithCaesar(content, doDecrypt, function(crypted){
+
+                        console.log("Checkpoint 12, decrypted content: " + crypted.toString());
+                        fileEntry.createWriter(function(writer){
+                            console.log("Checkpoint 13, created writer");
+                            writer.seek(0);
+
+                            //console.log('within randomPromptIntfile createwriter()');
+                            writer.write(crypted.toString());
+
+                            writer.onwriteend = function(evt){
+                                console.log('\nCheckpoint 14 Wrote to file ' + fileEntry.fullPath);
+                            }
+                        },onFSError);
+
+                        //generalWriteToFile(decrypted, fileName, false, false);
+                        //generalWriteToFile(decrypted.toString(CryptoJS.enc.Utf8), file.name, userID.toString(), false, false);
+                    });
+                }
+                reader.readAsText(file);
+            }, onFSError);
+
+        }
+
 
         //Works!
         //
         function decryptFileWithAES(fileName, containingDir, callback){
-
+            console.log("Checkpoint 9, in decryptFileWithAES")
             if(typeof(fileName)==="string"){
+                console.log("passed fileName is a string");
+
                 window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                     var entry = fileSystem.root;
                     entry.getDirectory(containingDir, {create: true, exclusive: false}, function(directory){
@@ -1719,6 +2335,9 @@
                                 reader.onloadend = function(e){
                                     content = e.target.result;
                                     decrypted = CryptoJS.AES.decrypt(content, encryptionKey);
+                                    //decrypted = CryptoJS.AES.decrypt(content.split(/\s/).join(''), encryptionKey);
+
+                                    //console.log("decrypted raw: " + decrypted);
                                     console.log("decrypted string contents: " + decrypted.toString(CryptoJS.enc.Utf8));
 
                                     //generalWriteToFile(decrypted, fileName, false, false);
@@ -1733,26 +2352,42 @@
             }
             //Else, if passing a fileEntry object...converts to file object here:
             else{
-                var fileEntry = fileName;
 
+                var fileEntry = fileName;
                 fileEntry.file(function(file){
+
+                    console.log("Checkpoint 10 passed fileName is not a string, but a " + typeof(fileEntry));
 
                     var content, decrypted;
                     var reader = new FileReader();
 
                     reader.onloadend = function(e){
+                        console.log("Checkpoint 11 reader has finished loading");
                         content = e.target.result;
 
+                        console.log("encrypted contents of " + file.name + ": " + content);
                         decrypted = CryptoJS.AES.decrypt(content, encryptionKey);
 
-                        console.log(decrypted.toString(CryptoJS.enc.Utf8));
+                        console.log("Checkpoint 12, decrypted content: " + decrypted.toString(CryptoJS.enc.Utf8));
+                        fileEntry.createWriter(function(writer){
+                            console.log("Checkpoint 13, created writer");
+                            writer.seek(0);
+
+                            //console.log('within randomPromptIntfile createwriter()');
+                            writer.write(decrypted.toString(CryptoJS.enc.Utf8));
+
+                            writer.onwriteend = function(evt){
+                                console.log('\nCheckpoint 14 Wrote to file ' + fileEntry.fullPath);
+                            }
+
+                        },onFSError);
 
                         //generalWriteToFile(decrypted, fileName, false, false);
-                        generalWriteToFile(decrypted.toString(CryptoJS.enc.Utf8), fileName, false, false);
+                        //generalWriteToFile(decrypted.toString(CryptoJS.enc.Utf8), file.name, userID.toString(), false, false);
                     }
 
                     reader.readAsText(file);
-                }, onFSError)
+                }, onFSError);
             }
 
             if(typeof(callback)==='function'){
@@ -1764,7 +2399,7 @@
         function exists(fileName, callback) {
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0,function(fs){
                 var entry = fs.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
                     directory.getFile(fileName,
                         {create : false},
@@ -1788,29 +2423,32 @@
         }
 
 
-        function writeToNotificationFile(passedString, doEncrypt){
 
+
+        function writeToNotificationFile(passedString, doEncrypt){
+            console.log("writeToNotificationFile()");
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
 
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("notification.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Not.not", {create: true, exclusive: false}, function(fileEntry){
 
                         //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
 
                             notificationFileWriter = writer;
-                            notificationFileWriter.seek(writer.length);
+                            notificationFileWriter.seek(0);
                             //console.log('within notificationfile createwriter()');
                             notificationFileWriter.write(passedString);
                             notificationFileWriter.onwriteend = function(evt){
                                 //alert(evt);
-                                //console.log("Done writing to notification.txt!");
+                                //console.log("Done writing to Not.not!");
                                 //console.log('\ntimes written to notifications.txt: \n' + passedString);
                             }
                         },onFSError);
@@ -1822,7 +2460,8 @@
         function writeToMissedNotificationsFile(passedString, doEncrypt){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             //console.log('missedNotifications: ' + passedString);
@@ -1830,9 +2469,9 @@
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
 
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("Mis.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Mis.mis", {create: true, exclusive: false}, function(fileEntry){
                         //console.log("FILEENTRY.NAME: " + fileEntry);
 
                         fileEntry.createWriter(function(writer){
@@ -1843,7 +2482,7 @@
                             missedNotificationsFileWriter.onwriteend = function(evt){
                                 //alert(evt);
                                 //console.log("Done writing to missednotifications.txt!");
-                                console.log('\nWrote to Mis.txt: ' + passedString);
+                                console.log('\nWrote to Mis.mis: ' + passedString);
                             }
                         },onFSError);
                     }, onGetDirectoryFail);
@@ -1854,7 +2493,8 @@
         function writeToLoginFile(passedString, doEncrypt){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             console.log('login: ' + passedString);
@@ -1863,9 +2503,9 @@
 
 
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("Log.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Log.log", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
                             loginFileWriter = writer;
@@ -1874,7 +2514,7 @@
                             loginFileWriter.write(passedString);
                             loginFileWriter.onwriteend = function(evt){
                                 //alert(evt);
-                                //console.log("Done writing to Log.txt!");
+                                //console.log("Done writing to Log.log!");
                                 console.log('wrote to login file: ' + passedString);
                             }
                         },onFSError);
@@ -1883,29 +2523,30 @@
             }, onFSError);
         }
 
-        function writeToSuspendFile(passedString, doEncrypt){
+        function writeToProblemFile(passedString, doEncrypt){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
-            console.log('suspend: ' + passedString);
+            console.log('Problem: ' + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("suspend.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Prb.prb", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
-                            suspendFileWriter = writer;
-                            suspendFileWriter.seek(0);
-                            //console.log('within suspendfile createwriter()');
-                            suspendFileWriter.write(passedString);
-                            suspendFileWriter.onwriteend = function(evt){
+                            ProblemFileWriter = writer;
+                            ProblemFileWriter.seek(0);
+                            //console.log('within Problemfile createwriter()');
+                            ProblemFileWriter.write(passedString);
+                            ProblemFileWriter.onwriteend = function(evt){
                                 //alert(evt);
                                 //console.log("Done writing to suspend.txt!");
-                                console.log('Wrote to suspendfile: ' + passedString);
+                                console.log('Wrote to prb.prb: ' + passedString);
                             }
                         },onFSError);
                     }, onGetDirectoryFail);
@@ -1916,16 +2557,17 @@
         function writeToWakeTimeBedTimeFile(passedString, doEncrypt){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             //console.log('waketimebedtime: ' + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("Bed.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Bed.bed", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry.toString());
                         fileEntry.createWriter(function(writer){
                             wakeTimeBedTimeFileWriter = writer;
@@ -1935,7 +2577,7 @@
                             wakeTimeBedTimeFileWriter.onwriteend = function(evt){
                                 //alert(evt);
                                 //console.log("Done writing to Bed!");
-                                console.log('\nwrote to Bed.txt: ' + passedString);
+                                console.log('\nwrote to Bed.bed: \n' + passedString);
                             }
                         },onFSError);
                     }, onGetDirectoryFail);
@@ -1949,14 +2591,15 @@
         function writeToTobaccoUseIntFile(passedString, doEncrypt, callback){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("Tob.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Tob.tob", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
                             TobaccoUseIntFileWriter = writer;
@@ -1965,7 +2608,7 @@
                             TobaccoUseIntFileWriter.write(passedString);
                             TobaccoUseIntFileWriter.onwriteend = function(evt){
                                 //alert(evt);
-                                //console.log("Done writing to Tob.txt!");
+                                //console.log("Done writing to Tob.tob!");
                                 console.log('\nwrote to tobacco use interview survey: \n' + passedString);
                             }
                         },onFSError);
@@ -1980,16 +2623,17 @@
         function writeToRandomPromptIntFile(passedString, doEncrypt, callback){
 
             if (doEncrypt){
-                passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                //passedString = CryptoJS.AES.encrypt(passedString, encryptionKey).toString();
+                passedString = cryptWithCaesar(passedString, false);
             }
 
             console.log("randompromptint: " + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                entry.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile("Rpt.txt", {create: true, exclusive: false}, function(fileEntry){
+                    directory.getFile("Rpt.rpt", {create: true, exclusive: false}, function(fileEntry){
                         //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
                             randomPromptIntFileWriter = writer;
@@ -2012,8 +2656,11 @@
         function copyFile(entry, callback) {
 
             var fileName = entry.name;
+            var fileType = fileName.split('.').pop();
+
 
             console.log("Checkpoint 4 @copyFile fileName: " + fileName);
+            console.log("file type: " + fileType);
             /*
             var parent = document.getElementById('parent').value,
                     parentName = parent.substring(parent.lastIndexOf('/')+1),
@@ -2021,20 +2668,28 @@
                     */
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fs){
-
                 console.log("checkpoint 5, got FileSystem within copyFile");
 
-                fs.root.getDirectory("Ecig_output/" + userID, {create: true, exclusive: false}, function(dr){
-                    // copy the file to a new directory and rename it
-                    console.log("checkPoint 6, got directory alt_output/");
-                        entry.copyTo(dr, userID.toString() + "_" + fileName, function(newFileEntry){
+                fs.root.getDirectory("alt", {create: true, exclusive: false}, function(dr){
+                    console.log("checkPoint 6, got directory ...");
 
-                            console.log("checkpoint 7 copied successfully, renamed to: " + userID.toString() + "_" + fileName);
+                    dr.getDirectory(userID.toString(), {create:true, exclusive: false}, function(userDir){
+                        console.log("checkPoint 7, got directory " + userDir.fullPath);
+
+                        entry.copyTo(userDir, userID.toString() + "." + fileType, function(newFileEntry){
+                            console.log("checkpoint 8 copied successfully, renamed to: " + newFileEntry.name);
+
+                            newFileEntry.file(function(f){
+                                console.log("copied file " +  f.name + " size: " + f.size);
+                            }, function(err){
+                                console.log("copied fileENtry to file() err: " + err);
+                            });
 
                             if (typeof(callback) === 'function')
                                 callback(newFileEntry);
 
                         }, onFSError);
+                    }, onGetDirectoryFail);
                 },onGetDirectoryFail);
             }, onFSError);
         };
@@ -2047,7 +2702,7 @@
             }
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("notification.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Not.not", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                     fileEntry.createWriter(function(writer){
                         notificationFileWriter = writer;
@@ -2056,7 +2711,7 @@
                         notificationFileWriter.write(passedString);
                         notificationFileWriter.onwriteend = function(evt){
                             //alert(evt);
-                            //console.log("Done writing to notification.txt!");
+                            //console.log("Done writing to Not.not!");
                         //console.log('\ntimes written to notifications.txt: \n' + passedString);
                         }
                     },onFSError);
@@ -2073,7 +2728,7 @@
             //console.log('missedNotifications: ' + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("Mis.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Mis.mis", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                     fileEntry.createWriter(function(writer){
                         missedNotificationsFileWriter = writer;
@@ -2083,7 +2738,7 @@
                         missedNotificationsFileWriter.onwriteend = function(evt){
                             //alert(evt);
                             //console.log("Done writing to missednotifications.txt!");
-                            console.log('\nWrote to Mis.txt: ' + passedString);
+                            console.log('\nWrote to Mis.mis: ' + passedString);
                         }
                     },onFSError);
                 },onFSError);
@@ -2099,7 +2754,7 @@
             console.log('login: ' + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("Log.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Log.log", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                     fileEntry.createWriter(function(writer){
                         loginFileWriter = writer;
@@ -2108,7 +2763,7 @@
                         loginFileWriter.write(passedString);
                         loginFileWriter.onwriteend = function(evt){
                             //alert(evt);
-                            //console.log("Done writing to Log.txt!");
+                            //console.log("Done writing to Log.log!");
                             console.log('wrote to login file: ' + passedString);
                         }
                     },onFSError);
@@ -2151,7 +2806,7 @@
             //console.log('waketimebedtime: ' + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("Bed.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Bed.bed", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry.toString());
                     fileEntry.createWriter(function(writer){
                         wakeTimeBedTimeFileWriter = writer;
@@ -2161,7 +2816,7 @@
                         wakeTimeBedTimeFileWriter.onwriteend = function(evt){
                             //alert(evt);
                             //console.log("Done writing to Bed!");
-                            console.log('\nwrote to Bed.txt: ' + passedString);
+                            console.log('\nwrote to Bed.bed: ' + passedString);
                         }
                     },onFSError);
                 },onFSError);
@@ -2178,7 +2833,7 @@
             }
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("Tob.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Tob.tob", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                     fileEntry.createWriter(function(writer){
                         TobaccoUseIntFileWriter = writer;
@@ -2187,7 +2842,7 @@
                         TobaccoUseIntFileWriter.write(passedString);
                         TobaccoUseIntFileWriter.onwriteend = function(evt){
                             //alert(evt);
-                            //console.log("Done writing to Tob.txt!");
+                            //console.log("Done writing to Tob.tob!");
                             console.log('\nwrote to tobacco use interview survey: \n' + passedString);
                         }
                     },onFSError);
@@ -2207,7 +2862,7 @@
             console.log("randompromptint: " + passedString);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getFile("Rpt.txt", {create: true, exclusive: false}, function(fileEntry){
+                fileSystem.root.getFile("Rpt.rpt", {create: true, exclusive: false}, function(fileEntry){
                     //console.log("FILEENTRY.NAME: " + fileEntry);
                     fileEntry.createWriter(function(writer){
                         randomPromptIntFileWriter = writer;
@@ -2228,7 +2883,7 @@
 
         */
 
-        function generalWriteToFile(passedString, fileName, doEncrypt, doAppend, callback){
+        function generalWriteToFile(passedString, fileName, subDir, doEncrypt, doAppend, callback){
 
             if (doEncrypt)
                 passedString = encryptStringWithAES(passedString).toString();
@@ -2237,9 +2892,13 @@
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
                 var entry = fileSystem.root;
-                entry.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
 
-                    directory.getFile(fileName, {create: true, exclusive: false}, function(fileEntry){
+                if(!subDir)
+                    subDir = '';
+
+                entry.getDirectory(".../" + subDir, {create: true, exclusive: false}, function(dir){
+
+                    dir.getFile(fileName, {create: true, exclusive: false}, function(fileEntry){
                         //console.log("FILEENTRY.NAME: " + fileEntry);
                         fileEntry.createWriter(function(writer){
 
@@ -2421,14 +3080,14 @@
                     //if near family
                     if(whoNearbySurveyData.alo_wthfam == 2 && answered){
                         goto5a1 = true;
-                        console.log("within whoNearbySurveyData.alo_wthfam == 2");
+                        //console.log("within whoNearbySurveyData.alo_wthfam == 2");
                         $("#whoNearbySurveyGo").attr("href", "#whoFamilySurvey");
                         $("#nearbyProductUseSurveyBack").attr("href", "#whoFamilySurvey");
                     }
 
                     //if not near family
                     else if(whoNearbySurveyData.alo_wthfam == 1 && answered){
-                        console.log("within whoNearbySurveyData.alo_wthfam == 1");
+                        //console.log("within whoNearbySurveyData.alo_wthfam == 1");
                         goto5a1 = false;
 
                         $("#whoNearbySurveyGo").attr("href", "#nearbyProductUseSurvey");
@@ -2744,8 +3403,10 @@
 
 
             if(!takingTestSurvey){
-                writeToRandomPromptIntFile(surveyString + '\n', true, resetSurveyWidgets);
-                alert("Thank you for filling out a survey!");
+                writeToRandomPromptIntFile(surveyString + '\n', true, function(){
+                    resetSurveyWidgets();
+                    alert("Thank you for filling out a survey!");
+            });
             }
             else{
                 resetSurveyWidgets();
@@ -2853,15 +3514,22 @@
                             beforeTobEmoSurveyCData.birritbl + delimiter +
                             beforeTobEmoSurveyCData.bconfdnt + delimiter );
 
-
-
-            writeToTobaccoUseIntFile(surveyString + '\n', true, resetSurveyWidgets);
+            writeToTobaccoUseIntFile(surveyString+ '\n', true, function(){
+                resetSurveyWidgets();
+                alert("Thank you for completing a tobacco use interview!")
+                    });
         }
 
         function startRandomPromptInterview(){
-            $("#emoSurveyABack").prop('disabled', true);
+            startedRandomPromptSurvey = true;
+            finishedRandomPromptSurvey = false;
+
+            $.mobile.navigate("#login");
+
+            $(document).on('pagebeforeshow', '#emoSurveyA', function(){
+                $('#emoSurveyABack').prop('disabled', true).addClass('ui-disabled');
+            });
             $("#emoSurveyABack").attr('href', '#');
-            $.mobile.navigate("#emoSurveyA");
 
             writingToRandomPromptInt = true;
 
@@ -2869,9 +3537,13 @@
         }
 
         function startTobaccoUseInterview(){
-            console.log("within startTobaccoUseInterview()");
+            //console.log("within startTobaccoUseInterview()");
 
-            $("#emoSurveyABack").prop('disabled', false);
+            $(document).on('pagebeforeshow', '#emoSurveyA', function(){
+                // So we can test if button is disabled or not
+                $('#emoSurveyABack').prop('disabled', false).removeClass('ui-disabled');
+            });
+
             $.mobile.navigate("#tobProductSurvey");
             writingToRandomPromptInt = false;
 
@@ -2952,6 +3624,7 @@
             if(($("#slider-bfrust").val() != '') && ($("#slider-birritbl").val() != '') && ($("#slider-bconfdnt").val() != '')){
                 $("#beforeTobEmoSurveyCGo").attr("href", "#main");
                 visitedBeforeTobEmoSurveyC=true;
+                recordTobaccoUseInterviewSurvey();
             }
             else
                 $("#beforeTobEmoSurveyCGo").attr("href", "#");
@@ -2960,7 +3633,6 @@
                     $("#slider-birritbl").val()+
                     $("#slider-bconfdnt").val());
 
-            recordTobaccoUseInterviewSurvey();
 
         }
 
@@ -2977,7 +3649,7 @@
 
 
         function finishProductUrgeSurvey(){
-            console.log("\nwritingToRandomPromptInt: " + writingToRandomPromptInt);
+            //console.log("\nwritingToRandomPromptInt: " + writingToRandomPromptInt);
             checkboxGroupAnswered('productUrgeSurvey', 'Checkboxes', function(answered){
                 if(answered){
                     if(writingToRandomPromptInt){
@@ -3151,7 +3823,6 @@
                 answered1 = true;
             }
 
-
             if($("#radio-pothour2").prop("checked")){
                 answered2 = true;
             }
@@ -3159,15 +3830,20 @@
                 answered2 = true;
             }
 
-
-
-
             if(answered1 && answered2){
                 if(writingToRandomPromptInt){
+
+                    //Criteria for not registering as 'abdndoned survey'
+                    hasMissedNotification = false;
+                    missedNotifications = 0;
+                    finishedRandomPromptSurvey = true;
+                    startedRandomPromptSurvey = false;
+
                     console.log("\nanswered all radios");
                     //$("#secondRadioSetSurveyGo").attr('href', '#main');
                     $.mobile.navigate("#main");
                     recordRandomPromptSurvey();
+
                     //$.mobile.navigate("#currentActivitySurvey');
                 }
                 else{
@@ -3331,6 +4007,80 @@
         //This function uses moment.js:
         //Populates notificationTimes only!!   Does not actually add notifications!
         //Need to have waketime and bedtimes decided before here!
+        //This version only adds an absence of notifications for the first period of timeAsleep, afterward, adds notifications throughout
+        // the next day
+        function setPartitionNotificationsForDaysV2(numDays, callback){
+            console.log("\nsetPartitionNotificationsForDaysV2()");
+            //Will always subtract bedtime from waketime, as bedtime will always come after waketime
+            //var partitionAmt = Math.abs((bedTimeDate.toDate() - wakeTimeDate.toDate())) / surveysInADay;
+            var tempTimeAsleep = Number(timeAsleep);
+            var tempTimeAwake = Number(timeAwake);
+
+            var partitionAmt = Math.abs((tempTimeAwake * 60 * 1000)) / surveysInADay;
+
+            partitionaAmt = Math.round(Math.abs(partitionAmt));
+
+            //console.log("Partition amount during first wake period:      " + partitionAmt);
+
+            //didMissNotificationArr = [];
+            //notificationTimes = [];
+
+            //var oldMoment = moment(passedDate).hours(wakeTimeDate.hours()).minutes(wakeTimeDate.minutes());
+            //var newMoment = moment(oldMoment).add('milliseconds', partitionAmt);
+
+            var oldMoment = moment(wakeTimeDate);
+            var newMoment = moment(oldMoment).add('milliseconds', partitionAmt);
+
+            var randMoment;
+
+            var bufferedOldMoment, bufferedNewMoment;
+
+
+            for(var i = 0; i < (parseInt(numDays) * surveysInADay); i++){
+
+                //Every time we reach the max number of surveys in a day, start over and partition notifications for the next day
+                if(i % surveysInADay == 0 && i != 0 && (i != (parseInt(numDays) * surveysInADay))){
+
+                    //console.log('\noldMoment: ' + moment(oldMoment).format("dddd, MMMM Do YYYY, HH:mm:ss a"))
+                    //console.log('timeAsleep: ' + timeAsleep);
+                    tempTimeAsleep = 1;
+                    tempTimeAwake =  Math.abs(tempTimeAsleep - 24 * 60);
+
+                    partitionAmt =  Math.round(Math.abs((24 * 60 * 60 * 1000) / surveysInADay));
+                    //console.log("Partition amount after first wake period: " + partitionAmt);
+                    oldMoment.add('minutes', tempTimeAsleep);
+                    //console.log('\noldMoment after adding timeAsleep: ' + moment(oldMoment).format("dddd, MMMM Do YYYY, HH:mm:ss a"));
+
+                    newMoment = moment(oldMoment).add('milliseconds', partitionAmt);
+                    //console.log('\nnewMoment from oldMoment: ' + moment(newMoment).format("dddd, MMMM Do YYYY, HH:mm:ss a") );
+                }
+
+                bufferedOldMoment = oldMoment.clone().add('minutes', bufferMins);
+                bufferedNewMoment = newMoment.clone().subtract('minutes', bufferMins)
+
+                randMoment = randomMoment(bufferedOldMoment, bufferedNewMoment);
+
+                //console.log('\n' + randMoment.toDate().toString());
+
+                notificationTimes.push(randMoment);
+                didMissNotificationArr.push(true);
+
+                oldMoment = newMoment;
+                newMoment = moment(newMoment);
+                newMoment.add('milliseconds', partitionAmt);
+            }
+
+            //console.log('\nend of setPartitionNotifications()');
+
+            if (typeof(callback) === 'function'){
+                callback();
+            }
+        }
+
+        /*
+        //This function uses moment.js:
+        //Populates notificationTimes only!!   Does not actually add notifications!
+        //Need to have waketime and bedtimes decided before here!
         function setPartitionNotificationsForDays(numDays, callback){
 
             //Will always subtract bedtime from waketime, as bedtime will always come after waketime
@@ -3390,25 +4140,34 @@
             }
 
         }
+        */
 
         //traverse notificationtimes, for all times that are greater than the current time,
         //add notificaitons at those times
         function notificationCheckAndAdd(){
-            //console.log("\nnotificationCheckAndAdd()");
+            console.log("\nnotificationCheckAndAdd()");
+
+            //reset timeAsleep and timeAwake here, so that if we need to repopulate notifications, it will do that for 24 hour period, not base don timeAwake
+            timeAsleep = 1;
+            timeAwake = Math.abs(timeAsleep - (24 * 60));
+
+            //Same reason as above... need to reset variables so that repopulating notifications after this will populate for 24 hour period
+            wakeTimeDate = moment(defaultWakeTime);
+            bedTimeDate = moment(defaultBedTime);
 
             var tempMoment;
             var now = moment();
 
-            console.log("\nWithin notificationCheckAndAdd()\nAdded:");
+            //console.log("\nWithin notificationCheckAndAdd()\nAdded:");
 
             for(var i = 0; i < notificationTimes.length; i++){
                 tempMoment = moment(notificationTimes[i]);
 
                 if(tempMoment.isAfter(now)){
                     notificationCount += 1;
-                    //console.log('Should add notification ' + notificationCount + ' at: ' + tempDate.toShortTimeString());
                     addNotificationAtTime(tempMoment.toDate(), notificationCount);
-                    console.log('\nAdded #' + notificationCount + ' @' + tempMoment.format('dddd, MMMM Do, HH:mm:ss a'));
+                    //if(notificationCount <= 5)
+                        //console.log('\nAdded #' + notificationCount + ' @' + tempMoment.format('dddd, MMMM Do, HH:mm:ss a'));
                     //break;
                 }
             }
@@ -3433,8 +4192,9 @@
                 message:    "Tap to take a survey",
                 title:      'Random prompt notification',
                 autoCancel: true,
-                //sound:      'http://www.mediafire.com/listen/wzw0bptgb0bpc2p/notification_tone_3min.mp3',
-                json:       JSON.stringify({ date: tempStr})
+                sound:      null,
+                json:       JSON.stringify({ date: tempStr}),
+                badge:      parseInt(passedNo)
             });
 
             //console.log('\nadded notification ' + passedNo.toString() + ' @ ' + tempStr);
@@ -3449,7 +4209,6 @@
             var now = moment();
             var concatStr;
 
-            hasMissedNotification = true;
             missedNotifications += 1;
 
             //concatStr = missType.toString() + delimiter + missedNotifications.toString() + delimiter + now.toDate().toString();
@@ -3459,6 +4218,7 @@
 
 
         function formNotificationString(callback){
+            console.log("\nformNotificationString()");
             var concatString='';
 
             for(var i = 0; i < notificationTimes.length; i++){
@@ -3536,7 +4296,7 @@
         }
 
         function resetSurveyWidgets(){
-            console.log("Within resetSurveyWidgets()");
+            //console.log("Within resetSurveyWidgets()");
 
             visitedEmoSurveyA = false;
             visitedEmoSurveyB = false;
@@ -3561,14 +4321,14 @@
 
         function determineWhichLogin(){
 
-            exists("Log.txt", function(result){
+            exists("Log.log", function(result){
                 if(result){
                     //$.mobile.navigate('#login');
-                    //("determineWhichLogin: found Log.txt");
+                    //("determineWhichLogin: found Log.log");
                 }
                 else{
                     $.mobile.navigate('#login-newuser');
-                    //console.log("determineWhichLogin: NOT found Log.txt");
+                    //console.log("determineWhichLogin: NOT found Log.log");
                 }
             });
         }
@@ -3672,8 +4432,9 @@
                 id:         -1,
                 message:    "Tap here to take a survey",
                 title:      'Random prompt notification',
-                autoCancel: true
-                //sound:      'http://www.mediafire.com/listen/wzw0bptgb0bpc2p/notification_tone_3min.mp3'
+                autoCancel: true,
+                sound:      null,
+                badge:      -1
             });
         }
 
@@ -3733,49 +4494,35 @@
             console.log('\nfourth notification @ ' + _45_seconds_from_now.toString())
         }
 
+        function cryptWithCaesar(passedString, doDecrypt, callback){
+
+            var result = doCrypt(doDecrypt, passedString);
+
+            if(typeof(callback) === 'function')
+                callback(result);
+            else
+                return result;
+
+        }
+
         //Decrypts all the output files, renames all of the files to userName_fileType.txt, and moves them from '...' to
-        //a new directory within '...' named userName
+        //a new directory within '.alt' named userName
         function prepareAllFiles(){
-            var fileNames = new Array("Tob.txt", "Rpt.txt", "Log.txt", "Bed.txt", "Mis.txt")
-            var fn;
+            var fileNames = new Array("Tob.tob", "Rpt.rpt", "Log.log", "Bed.bed", "Mis.mis", "Not.not");
+
+            clearPriorNotifications();
+            if(my_media){
+                my_media.stop();
+                //my_media.reset();
+                my_media.release();
+            }
+
+            displayAppStatus(states.ACTIVE);
 
             window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
-                fileSystem.root.getDirectory("Ecig_output", {create: true, exclusive: false}, function(directory){
+                fileSystem.root.getDirectory("alt", {create: true, exclusive: false}, function(directory){
 
                     console.log("Checkpoint 1");
-
-                    //First, encrypted files
-                    exists(fileNames[0], function(value){
-                        if(value){
-                            console.log("Checkpoint 2, " + fileNames[0] + " found.");
-
-                            directory.getFile(fileNames[0], {create: false, exclusive: false}, function(fileEntry){
-                                console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
-
-                                copyFile(fileEntry, function(copiedFileEntry){
-                                    decryptFileWithAES(copiedFileEntry)
-                                });
-                            }, onFSError);
-                        }
-                        //else
-                            //console.log(fileNames[0] + " not found!");
-                    });
-
-                    exists(fileNames[1], function(value){
-                        if(value){
-                            console.log("Checkpoint 2, " + fileNames[1] + " found.");
-
-                            directory.getFile(fileNames[1], {create: false, exclusive: false}, function(fileEntry){
-                                console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
-
-                                copyFile(fileEntry, function(copiedFileEntry){
-                                    decryptFileWithAES(copiedFileEntry)
-                                });
-                            }, onFSError);
-                        }
-                        //else
-                            //console.log(fileNames[1] + " not found!");
-                    });
 
                     exists(fileNames[2], function(value){
                         if(value){
@@ -3785,7 +4532,10 @@
                                 console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
 
                                 copyFile(fileEntry, function(copiedFileEntry){
-                                    decryptFileWithAES(copiedFileEntry)
+                                    //decryptFileWithAES(copiedFileEntry)
+
+                                    cryptFileWithCaesar(copiedFileEntry, true);
+
                                 });
                             }, onFSError);
                         }
@@ -3799,11 +4549,7 @@
 
                             directory.getFile(fileNames[3], {create: false, exclusive: false}, function(fileEntry){
                                 console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
-
-                                copyFile(fileEntry, function(copiedFileEntry){
-                                    decryptFileWithAES(copiedFileEntry)
-                                });
-
+                                copyFile(fileEntry);
 
                             }, onFSError);
                         }
@@ -3818,13 +4564,63 @@
                             directory.getFile(fileNames[4], {create: false, exclusive: false}, function(fileEntry){
                                 console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
 
-                                copyFile(fileEntry, function(copiedFileEntry){
-                                    decryptFileWithAES(copiedFileEntry)
-                                });
+                                copyFile(fileEntry);
                             }, onFSError);
                         }
                         //else
                             //console.log(fileNames[4] + " not found!");
+                    });
+
+                    exists(fileNames[5], function(value){
+                        if(value){
+                            console.log("Checkpoint 2, " + fileNames[5] + " found.");
+
+                            directory.getFile(fileNames[5], {create: false, exclusive: false}, function(fileEntry){
+                                console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
+
+                                copyFile(fileEntry);
+                            }, onFSError);
+                        }
+                        //else
+                        //console.log(fileNames[4] + " not found!");
+                    });
+
+                    //First, encrypted files
+                    exists(fileNames[0], function(value){
+                        if(value){
+                            console.log("Checkpoint 2, " + fileNames[0] + " found.");
+
+                            directory.getFile(fileNames[0], {create: false, exclusive: false}, function(fileEntry){
+                                console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
+
+                                copyFile(fileEntry, function(copiedFileEntry){
+                                    //decryptFileWithAES(copiedFileEntry)
+
+                                    cryptFileWithCaesar(copiedFileEntry, true);
+                                });
+                            }, onFSError);
+                        }
+                        //else
+                        //console.log(fileNames[0] + " not found!");
+                    });
+
+
+                    exists(fileNames[1], function(value){
+                        if(value){
+                            console.log("Checkpoint 2, " + fileNames[1] + " found.");
+
+                            directory.getFile(fileNames[1], {create: false, exclusive: false}, function(fileEntry){
+                                console.log("Checkpoint 3 @prepareAllFiles(), got file, FILEENTRY.NAME: " + fileEntry.name);
+
+                                copyFile(fileEntry, function(copiedFileEntry){
+                                    //decryptFileWithAES(copiedFileEntry)
+                                    cryptFileWithCaesar(copiedFileEntry, true);
+
+                                });
+                            }, onFSError);
+                        }
+                        //else
+                        //console.log(fileNames[1] + " not found!");
                     });
 
 
@@ -3835,29 +4631,37 @@
 
 
 
-
-
         //Deletes all of the output files, including the newly prepared directory which holds formatted user data
         function deleteAllFiles(){
 
-        }
-
-        //last step in the preparefiles function:
-        function moveFilesToUserDirectory(callback){
-
-
-
-            if (typeof callback === "function"){
-                callback();
+            clearPriorNotifications();
+            if(my_media){
+                my_media.stop();
+                //my_media.reset();
+                my_media.release();
             }
+
+            displayAppStatus(states.ACTIVE);
+
+            window.requestFileSystem(LocalFileSystem.PERSISTENT, 0, function(fileSystem){
+                fileSystem.root.getDirectory("alt", {create: true, exclusive: false}, function(directory){
+
+                    directory.removeRecursively(function(){
+                        alert("You have deleted all of the user data for " + userID.toString())
+                    }, function(){
+                        alert("Error, user data not deleted for user " + userId.toString() + " delete the directory manually from Android file manager.");
+                    });
+                }, onGetDirectoryFail);
+            }, onFSError);
         }
 
-        function suspendNotifications(){
+
+        function suspendNotifications(onResume){
             var suspendTime = parseInt($("#suspend-select1 option:selected").val());
             var suspendReason = $("#suspend-select2 option:selected").text();
 
             //If not cancelling a suspension:
-            if(suspendTime != -1){
+            if(suspendTime){
                 var now = moment();
                 var suspendLimit = moment().add('minutes', suspendTime);
                 console.log('\nadding mins:  ' + suspendTime);
@@ -3887,89 +4691,159 @@
                     }
                 }
 
-                displayAppStatus('suspend');
-                resumeTime = suspendLimit;
-            }
-            else{
+                currentState = states.SUSPENDED;
+                displayAppStatus(states.SUSPENDED);
 
-                //should be able to just repopulate notifications
-                clearPriorNotifications(addNewNotifications);
-                displayAppStatus('cancel');
-
+                if(resumeTime == null)
+                    resumeTime = suspendLimit;
             }
 
-            //exitFromApp();
-            $.mobile.navigate('#login');
+            setLoginStatusLabel("Notifications will resume: " + resumeTime.format("MMM D, h:mm a"));
+
+            if(!onResume)
+                $.mobile.navigate('#login');
+
         }
 
-        function delayNotification(){
-
-            writingToRandomPromptInt = false;
+        function delayNotification(onResume){
+            currentState = states.DELAYED;
+            startedRandomPromptSurvey = false; //results in registering as abandoned == false upon resume()
+            finishedRandomPromptSurvey = false;
+            writingToRandomPromptInt = false; //user could run out a delayed period, have status revert to active... dont want the user to be taken immediately to random prompt upon login
+            displayAppStatus(states.DELAYED);
 
             var delayTime = parseInt($("#select-choice-1 option:selected").val());
-            resumeTime = moment().add('minutes', delayTime);
 
-            //If delaying a notification to a time within 30 minutes of the next notification, cancel that notification
-            var diff = Math.abs(notificationTimes.length - notificationCount);
-            var translatedIndex = diff + parseInt(lastCancelledNotification);
+            if (resumeTime == null)
+                resumeTime = moment().add('minutes', delayTime);
 
-            console.log("\n@delayNotification()\nwill fire notification @ " + resumeTime.format("dddd, MMMM Do YYYY, h:mm:ss a") +
-                        "lastCancelledNotification: " + lastCancelledNotification);
+            console.log("\n@delayNotification()\nwill fire notification @ " + resumeTime.format("dddd, MMMM Do YYYY, h:mm:ss a"));
 
+            /*
             addNotificationAtTime(resumeTime.toDate(), lastCancelledNotification);
-            displayAppStatus('delay');
+            //In the case that you delay a notification, will need to reset the value of it being missed or not, so that
+            //if user also misses the delayed notification, it will be properly recorded
+            didMissNotificationArr[parseInt(lastCancelledNotification)] = true;
+            */
 
-            currentlyDelaying = true;
+            //Need to add a unique notification id, can't over ride prior notification id as the didMissNotificationArr[id] value
+            //could be overwritten upon  trying to initialize delayed notification didMissNotificationValue, resulting in double missed
+            //notification value.
+            window.plugin.notification.local.add({
+                id:         0,
+                date:       resumeTime.toDate(),
+                message:    "Tap to take a survey",
+                title:      'Delayed prompt notification',
+                autoCancel: true,
+                sound:      null,
+                json:       JSON.stringify({ date: resumeTime.toString()}),
+                badge:      0
+            });
 
-            $.mobile.navigate('#login');
+            setLoginStatusLabel("Notification will resume: " + resumeTime.format("MMM D, h:mm a"));
 
-            //exitApp();
+            /*
+            setTimeout(function(){
+                console.log("after delaying a notification for " + delayTime + "minutes--");
+                console.log("current state from: " + currentState);
+
+                if(currentState == states.DELAYED)
+                    currentState = states.ACTIVE;
+
+                console.log("current state to: " + currentState);
+
+            }, parseInt(delayTime) * 60 * 1000);
+            */
+
+            if(!onResume)
+                $.mobile.navigate('#login');
+        }
+
+        function wakeUp(){
+            //clearPriorNotifications(addNewNotifications);
+            didMissWakeUp = false;
+            window.plugin.notification.local.cancel(-99);
+            currentState = states.ACTIVE;
+            displayAppStatus(states.ACTIVE);
+            $.mobile.navigate("#login");
+        }
+
+        function snooze(){
+            //cancelling the alarm notification, also sets wakeUpFiring to false... no need to do it here
+            didMissWakeUp = false;
+            window.plugin.notification.local.cancel(-99);
+
+            var snoozeTime = moment().add('minutes', 10);
+            //Need to include 3 additional minutes for the three minute duration that the alarm goes off
+            resumeTime = moment().add('minutes', 13);
+
+            window.plugin.notification.local.add({
+                id:         -99,
+                date:       snoozeTime.toDate(),
+                message:    "Tap to wake up or snooze",
+                title:      'Application wake up',
+                autoCancel: false,
+                sound:      null,
+                json:       JSON.stringify({ date: snoozeTime.toString()})
+            });
+
+            setLoginStatusLabel("Alarm will resume: " + snoozeTime.format("MMM D, h:mm a"));
+
+            $.mobile.navigate("#login");
+        }
+
+        function setLoginStatusLabel(passedString){
+            $("#login-statuslabel h3").text(passedString);
+            console.log('Should change label to ' + passedString);
         }
 
         //Updates the portion below the login screen to let user know if the application is suspended, delayed, or sleeping
         function displayAppStatus(type){
-            if(type == 'suspend'){
-
+            if(type == states.SUSPENDED){
+                currentState = states.SUSPENDED;
                 switchLoginTheme('g');
 
                 $("#login-header h1").text("Notifications Suspended");
                 $("#login-footer-header").text("Log in to break suspension");
 
-                console.log('\nwithin displayAppStatus(\'suspend\'');
+                //console.log('\nwithin displayAppStatus(\'suspend\'');
             }
-            else if(type == 'bedtime'){
-
+            else if(type == states.ASLEEP){
+                currentState = states.ASLEEP;
                 switchLoginTheme('f');
 
                 $("#login-header h1").text("App is asleep");
                 $("#login-footer-header").text("Log in to break bedtime");
 
-                console.log('\nwithin displayAppStatus(\'bedtime\'');
+                //console.log('\nwithin displayAppStatus(\'bedtime\'');
             }
-            else if(type == 'delay'){
-
+            else if(type == states.DELAYED){
+                currentState = states.DELAYED;
                 switchLoginTheme('h');
 
                 $("#login-header h1").text("Delaying Notification");
                 $("#login-footer-header").text("Log in to take a survey now");
 
-                console.log('\nwithin displayAppStatus(\'delay\'');
+                //console.log('\nwithin displayAppStatus(\'delay\'');
             }
 
             //Cancel appStatus display
-            else if(type == 'cancel'){
-
+            else if(type == states.ACTIVE){
+                currentState = states.ACTIVE;
                 switchLoginTheme('a');
 
                 $("#login-header h1").text("Login");
                 $("#login-footer-header").text("UIC & EVL");
 
-                $("suspend-select1").val(30).selectmenu('refresh');
+                $("#suspend-select1").val(30).selectmenu('refresh');
+                $("#delaydiv #select-choice-1").val(5).selectmenu('refresh');
 
-                console.log('\nwithin displayAppStatus(\'cancel\'');
+                //console.log('\nwithin displayAppStatus(\'active\'');
+                setLoginStatusLabel("Receiving notifications");
 
                 resumeTime = null;
-                currentlyDelaying = false;
+
+                wakeUpFiring = false;
             }
         }
 
@@ -3995,6 +4869,59 @@
             });
 
         }
+
+        function setIntervalX(callback, delay, repetitions) {
+            var x = 0;
+
+            callback();
+
+            var intervalID = window.setInterval(function () {
+
+                callback();
+
+                if (++x === repetitions) {
+                    window.clearInterval(intervalID);
+                }
+            }, delay);
+        }
+
+        function setDeceleratingTimeout(callback, factor, times )
+        {
+            var internalCallback = function( t, counter )
+            {
+                return function()
+                {
+                    if ( t-- > 0 )
+                    {
+                        window.setTimeout( internalCallback, ++counter * factor );
+                        callback();
+                    }
+                }
+            }( times, 0 );
+
+            window.setTimeout( internalCallback, factor );
+        };
+
+
+
+        function setDeceleratingTimeoutWithDuration(callback, factor, duration, partitionSize )
+        {
+            var times = parseInt(Math.ceil(parseInt(duration) / parseInt(partitionSize)));
+
+            var internalCallback = function( t, counter )
+            {
+                return function()
+                {
+                    if ( t-- > 0 )
+                    {
+                        window.setTimeout( internalCallback, --counter * factor );
+                        callback();
+                    }
+                }
+            }( times, times );
+
+            window.setTimeout( internalCallback, factor );
+        };
 
         /*
         function showWakeTimeDialog(){
@@ -4112,6 +5039,12 @@
         margin: 0.6em 10% 0.8em !important;
     }
 
+    #ajaxSpinner{
+        width: 100%;
+        height: 100%;
+        background-color:#f3f3f3;
+    }
+
     h2{
     margin-top: 0px;
     margin-bottom: 0px;
@@ -4125,6 +5058,13 @@
 
     #button-mainsurvey .ui-btn-inner {
         font-size: 20px;
+    }
+
+    #button-snooze .ui-btn-inner {
+        font-size: 40px;
+    }
+    #button-wakeup .ui-btn-inner {
+        font-size: 40px;
     }
 
     .jquerymobileslidercont {
@@ -4226,33 +5166,31 @@
 </head>
 
     <body onload="onLoad()">
-
         <!-- login page -->
 
         <div id="login" data-role="page">
+
+            <!--div style="position:fixed" id="ajaxSpinner"><img src="img/ajax-loader.gif" style="vertical-align: middle; right: 50%;"> </div-->
 
             <div data-role="header" id="login-header">
                 <h1>Login</h1>
             </div>
 
-
-
             <div data-role="content">
                 <!--div id="logincontent"></div-->
-
                 <form id="form-login">
                     <div data-role="fieldcontain" class="ui-hide-label">
                         <label for="login-password">Password:</label>
                         <input type="tel" name="login-password" id="login-password" value="" placeholder="Password" class="password-field"/>
                     </div>
-                    <a href="#" id="login-button" data-role="button" onclick="checkLogin(true)">Login</a>
+                    <a href="#" id="login-button" data-role="button" onclick="checkLoginV2()">Login</a>
                     <!--a href="#" id="login-button" data-role="button" data-rel="popup" onclick="checkLoginPopUp()">Login</a-->
                 </form>
+                <div id="login-statuslabel">
+                    <h3 align="center">Receiving notifications</h3>
+                </div>
 
-                <!--div id="login-appstatus">
-                    <h2 id="login-appstatus-header1" align="center"></h2>
-                    <h3 id="login-appstatus-header2" align="center"></h3>
-                </div-->
+
             </div>
 
 
@@ -4275,7 +5213,6 @@
 
 
         </div>
-
 
 
     <!-- NEW USER LOGIN PAGE -->
@@ -4321,8 +5258,8 @@
         <div data-role="footer" data-position="fixed">
             <div data-role="navbar">
                 <ul>
-                    <li><a href="#" onclick="delayNotification()" class="ui-disabled">Back</a></li>
-                    <li><a href="#login" class="ui-disabled">Next</a></li>
+                    <li><a href="#" class="ui-disabled">Back</a></li>
+                    <li><a href="#" class="ui-disabled">Next</a></li>
                 </ul>
             </div>
         </div>
@@ -4370,7 +5307,7 @@
         <div data-role="content">
             <ul id="administratorlist" data-role="listview"></ul>
             <a href="#" data-role="button" data-icon="grid" onclick="prepareAllFiles()">Prepare all files</a>
-            <a href="#" data-role="button" data-icon="delete" onclick="deleteAllFiles()">Delete all files</a>
+            <a href="#delete1" data-role="button" data-icon="delete">Delete all files</a>
         </div>
 
         <div data-role="footer" data-position="fixed">
@@ -4790,7 +5727,7 @@
             <div data-role="navbar">
                 <ul>
                     <li><a href="#main">Back</a></li>
-                    <li><a href="#" onclick="suspendNotifications()">Submit suspension</a></li>
+                    <li><a href="#" onclick="suspendNotifications(false)">Submit suspension</a></li>
                 </ul>
             </div>
         </div>
@@ -4807,7 +5744,7 @@
 
             <div align="center">
                 <a href="#wakeTime" data-role="button" data-rel="back" data-inline="true" data-theme="f">Cancel</a>
-                <a href="#" data-role="button" onclick="checkAndSetWakeTime()" data-inline="true" data-theme="f">Put to sleep</a>
+                <a href="#" data-role="button" onclick="setWakeTime()" data-inline="true" data-theme="f">Put to sleep</a>
             </div>
         </div>
     </div-->
@@ -4848,7 +5785,7 @@
                 <h4 align="center">By setting your wake time, you are putting the application to sleep.</h4>
                 <h3 align="center">Are you sure you want to continue?</h3>
                 <a href="#" data-role="button" data-inline="true" data-rel="back" data-theme="a">Cancel</a>
-                <a href="#" data-role="button" data-inline="true" data-transition="flow" onclick="checkAndSetWakeTime()" data-theme="f">Put to sleep</a>
+                <a href="#" data-role="button" data-inline="true" data-transition="flow" onclick="setWakeTime()" data-theme="f">Put to sleep</a>
             </div>
         </div>
 
@@ -4905,6 +5842,101 @@
             </div>
         </div>
     </div>
+
+    <!-- Delete screens -->
+
+    <div data-role="page" id="delete1">
+
+        <div data-role="header" data-theme="a">
+            <h1>Delete all data files?</h1>
+        </div>
+
+        <div data-role="content">
+            <h2 style="padding-top:50px">Do you want to delete all of the data files found at:</h2>
+            <h3 align="center">/storage/sdcard/alt/  ?</h3>
+        </div>
+
+        <div data-role="footer" data-position="fixed">
+            <div data-role="navbar">
+                <ul>
+                    <li><a href="#administrator">Cancel deletion</a></li>
+                    <li><a href="#delete2" data-theme="g">Yes, delete the data</a></li>
+                </ul>
+            </div>
+        </div>
+
+
+    </div>
+
+    <div data-role="page" id="delete2">
+
+        <div data-role="header" data-theme="a">
+            <h1>Delete all user data?</h1>
+        </div>
+
+        <div data-role="content">
+            <h2 style="padding-top:50px">Do you want to delete all of the data files found at:</h2>
+            <h3 align="center">/storage/sdcard/alt/  ?</h3>
+            <h2 style="padding-top:50px">This will delete all data including any zips, encrypted data, and decrypted data</h2>
+        </div>
+
+        <div data-role="footer" data-position="fixed">
+            <div data-role="navbar">
+                <ul>
+                    <li><a href="#administrator">Cancel deletion</a></li>
+                    <li><a href="#delete3" data-theme="g">Yes, delete the data</a></li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <div data-role="page" id="delete3" data-theme="g">
+
+        <div data-role="header" data-theme="g">
+            <h1>Delete all user data?</h1>
+        </div>
+
+        <div data-role="content" data-theme="g">
+            <h2 style="padding-top:20px">Do you want to delete all of the data files found at:</h2>
+            <h3 align="center">/storage/sdcard/alt/  ?</h3>
+            <h2 style="padding-top:30px">This will delete all data including any zips, encrypted data, and decrypted data</h2>
+            <h1 align="center">Make certain you have grabbed the zipped data before deletion. Do you want to continue?</h1>
+        </div>
+
+        <div data-role="footer" data-position="fixed" data-theme="g">
+            <div data-role="navbar">
+                <ul>
+                    <li><a href="#administrator" data-theme="a">Cancel deletion</a></li>
+                    <li><a href="#administrator" onclick="deleteAllFiles()">Yes, delete the data</a></li>
+                </ul>
+            </div>
+        </div>
+
+
+    </div>
+
+    <div data-role="page" id="wakeup" data-theme="f">
+
+        <div data-role="header" data-theme="f">
+            <h1>Wake up</h1>
+        </div>
+
+        <div data-role="content" data-theme="f">
+            <h2 align="center">Would you like to wake up the application?</h2>
+            <div data-role="controlgroup">
+                <a href="#" data-role="button" onclick="wakeUp()" id="button-wakeup" >Wake up</a>
+                <a href="#" data-role="button" onclick="snooze()" id="button-snooze">Snooze</a>
+            </div>
+        </div>
+
+
+        <div data-role="footer" data-theme="f">
+            <h4>UIC &amp; EVL</h4>
+        </div>
+
+    </div>
+
 
 </body>
 </html>

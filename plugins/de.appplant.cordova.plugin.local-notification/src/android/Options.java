@@ -41,15 +41,17 @@ public class Options {
     private JSONObject options = new JSONObject();
     private String packageName = null;
     private long interval      = 0;
+    private Context ctx;
 
-    Options (Activity activity) {
-        packageName = activity.getPackageName();
-    }
+	Options (Activity activity) {
+		packageName = activity.getPackageName();
+		ctx = activity.getApplicationContext();
+	}
 
-    Options (Context context) {
-        packageName = context.getPackageName();
-    }
-
+	Options (Context context) {
+		packageName = context.getPackageName();
+		ctx = context;
+	}
     /**
      * Parst die übergebenen Eigenschaften.
      */
@@ -139,15 +141,14 @@ public class Options {
 
         if (sound != null) {
             try {
-                int soundId = (Integer) RingtoneManager.class.getDeclaredField(sound).get(Integer.class);
-
-                return RingtoneManager.getDefaultUri(soundId);
+                Uri soundString = Uri.parse("android.resource://" + packageName + "/"+ ctx.getResources().getIdentifier(sound, "raw", packageName));
+                return soundString;
             } catch (Exception e) {
                 return Uri.parse(sound);
             }
         }
 
-        return null;
+        return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
     }
 
     /**
@@ -224,6 +225,10 @@ public class Options {
     public Boolean getOngoing () {
         return options.optBoolean("ongoing", false);
     }
+    
+    public long getWindowMilliseconds () {
+		return options.optLong("windowMilliseconds", 0);
+	}
 
     /**
      * Gibt die zusätzlichen Daten als String an.
