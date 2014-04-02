@@ -14,7 +14,7 @@ public final class R {
         public static final int icon=0x7f020000;
     }
     public static final class raw {
-        public static final int notificationsound1=0x7f040000;
+        public static final int notification_tone_3min=0x7f040000;
     }
     public static final class string {
         public static final int app_name=0x7f050000;

@@ -89,8 +89,6 @@
         var notificationFileString;
         var loginFileString;
 
-
-
         var delimiter = ', ';
 
         var writingToLoginInfo = false;
@@ -102,6 +100,8 @@
 
         //var minSleepTime = 4;
         //var maxSleepTime = 19;
+
+        //var serviceNotificationID = -666;
 
         var minSleepTime = 4;
         var maxSleepTime = 19;
@@ -119,11 +119,11 @@
         var hour, min, sec;
         var timeStamp;
 
-        var bufferMins = 15;
-        //var bufferMins = 2;
+        //var bufferMins = 15;
+        var bufferMins = 2;
 
-        //var surveysInADay = 50 ;
-        var surveysInADay = 7;
+        var surveysInADay = 50;
+        //var surveysInADay = 7;
 
         var currentSurveyTaken = -1;
         var noOfSurveysTaken = 0;
@@ -144,10 +144,10 @@
         var startedRandomPromptSurvey = false;
         var finishedRandomPromptSurvey = false;
 
-
-
         var defaultWakeTime = moment().hours(0).minutes(0).seconds(0);
         var defaultBedTime = moment().hours(23).minutes(59).seconds(0);
+
+        var notificationAudioLoc = 'android.resource://com.testing.ecigcordova3_3/raw/notification_tone_3min';
 
         //variables used to determine notification beginning and end times:
         var wakeTimeDate = moment(defaultWakeTime);
@@ -160,6 +160,13 @@
             ASLEEP:      1,
             DELAYED:     2,
             SUSPENDED:   3
+        };
+
+        var statesRev = {
+            0:        "ACTIVE",
+            1:        "ASLEEP",
+            2:        "DELAYED",
+            3:        "SUSPENDED"
         };
 
         var wakeUpFiring = false;
@@ -1186,7 +1193,6 @@
 
         function userHasGoneIdle(){
 
-            window.plugin.backgroundMode.enable();
 
             //If user goes idle and has started a random prompt survey but has not finished it before going idle,
             //Need to record a survey as being abandoned
@@ -1212,6 +1218,7 @@
                 $.mobile.navigate('#login');
             else
                 $.mobile.navigate('#wakeup');
+
             resetSurveyWidgets();
 
             console.log('userHasGoneIdle');
@@ -1227,6 +1234,8 @@
             console.log("timeAsleep: " + timeAsleep);
 
             console.log("timeAwake: " + timeAwake);
+
+            //window.plugin.backgroundMode.enable();
 
             /*
             window.plugin.notification.local.getScheduledIds( function (scheduledIds) {
@@ -1268,7 +1277,7 @@
                 //ODD BUG WHERE NOTIFICATIONS WILL NOT BE CLEARED PRIOR TO BEING ADDED... GENERALLY MORE THAN 2x SURVEYSINADAY will be added with duplicate notifications in a day
                 //2.5 because num would be greater than 2x surveysaday, but delaying a notification will also increase length, so there could legitimately be more than 2x surveys a day
                 if(scheduledIds.length <= 1 || scheduledIds.length > parseInt(2.5 * surveysInADay)){
-                  //while(scheduledIds.length == 0){
+
 
                     if(currentState == states.DELAYED){
 
@@ -1334,14 +1343,8 @@
                         });
                     }
 
-
-
-
                 }
-
-
             });
-
         }
 
 		function onLoad() {
@@ -1351,6 +1354,9 @@
 
 //***************onDeviceReady()
 		function onDeviceReady() {
+
+            //window.plugin.backgroundMode.enable();
+
             console.log("WITHIN onDeviceReady()");
 
             //playNotificationAudio(media_loc);
@@ -1363,69 +1369,72 @@
             window.plugin.notification.local.onadd = function(id, state, json){
                 //console.log('\nonadd() adding #: ' + id.toString());
                 //console.log('\nJSON date: ' + JSON.parse(json).date);
-                console.log('\nonadd() adding #' + id + ' fires @ ' + JSON.parse(json).date);
+                //console.log('\nonadd() adding #' + id + ' fires @ ' + JSON.parse(json).date);
 
             };
 
             window.plugin.notification.local.ontrigger = function (id, state, json) {
                 console.log('\nontrigger() #' + id + " State: " + state + " @" + moment().toString());// + ' @' + JSON.parse(json).date);
 
-                if(Math.abs(id >= notificationCount - 1 || notificationCount == 0)){
-                    console.log('id - notificationCount == 0:' + id + ' - ' + notificationCount + ' = ' + (id - notificationCount));
+                //if(id != serviceNotificationID){
 
-                    clearPriorNotifications(function(){
-                        addNewNotifications(function(){
-                            formNotificationString(writeToNotificationFile);
+                    if(Math.abs(id >= notificationCount - 1 || notificationCount == 0)){
+                        console.log('id - notificationCount == 0:' + id + ' - ' + notificationCount + ' = ' + (id - notificationCount));
+
+                        clearPriorNotifications(function(){
+                            addNewNotifications(function(){
+                                formNotificationString(writeToNotificationFile);
+                            });
                         });
-                    });
-                }
-
-                triggerTime = moment().toDate().toString();
-
-                if(id == 0)
-                    didMissDelayedNotification = true;
-
-                if(id != -99){
-                    playNotificationAudio();
-                }
-                //In the case that the user does not access app when an alarm goes off by clicking notification,
-                //Have app navigate to wakeup screen
-                else{
-                    playAlarmAudio();
-                    didMissWakeUp = true;
-                    wakeUpFiring = true;
-                    $.mobile.navigate("#wakeup");
-                }
-
-                setTimeout(function(){
-                    if(id != -1 && id != -99){
-                            //if Havent clicked on a notificaiton, and the notificaiton snt a delayed notificaiton,
-                            if(didMissNotificationArr[parseInt(id)] && id != 0){
-                                console.log("@onTrigger: didMissNotificationArr[" + id + "] = " + didMissNotificationArr[id]);
-                                hasMissedNotification = true;
-                                addToMissedNotifications(2, triggerTime);
-                                window.plugin.notification.local.cancel(id);
-                            }
-                            //for missed delayed notifications, only log missed if not clicked and only cancel if not clicked (and therefore cnaceled)
-                            else if(id == 0 && didMissDelayedNotification){
-                                console.log("@onTrigger: didMissDelayedNotification = " + didMissDelayedNotification);
-                                hasMissedNotification = true;
-                                addToMissedNotifications(2, triggerTime);
-                                window.plugin.notification.local.cancel(id);
-                            }
-
                     }
-                    //Need to set boolean to remain at #wakeup, regardless of whether or not the user leaves the app during
-                    //wakeup alarm
-                    else if(id == -99 && didMissWakeUp){
-                        wakeUpFiring = false;
-                        window.plugin.notification.local.cancel(id);
-                    }
-                    else if(id == -1)
-                        window.plugin.notification.local.cancel(id);
 
-                }, (180 * 1000));
-                //}, (60 * 1000));
+                    triggerTime = moment().toDate().toString();
+
+                    if(id == 0)
+                        didMissDelayedNotification = true;
+
+                    if(id != -99){
+                        playNotificationAudio();
+                    }
+                    //In the case that the user does not access app when an alarm goes off by clicking notification,
+                    //Have app navigate to wakeup screen
+                    else{
+                        playAlarmAudio();
+                        didMissWakeUp = true;
+                        wakeUpFiring = true;
+                        $.mobile.navigate("#wakeup");
+                    }
+
+                    setTimeout(function(){
+                        if(id != -1 && id != -99){
+                                //if Havent clicked on a notificaiton, and the notificaiton snt a delayed notificaiton,
+                                if(didMissNotificationArr[parseInt(id)] && id != 0){
+                                    console.log("@onTrigger: didMissNotificationArr[" + id + "] = " + didMissNotificationArr[id]);
+                                    hasMissedNotification = true;
+                                    addToMissedNotifications(2, triggerTime);
+                                    window.plugin.notification.local.cancel(id);
+                                }
+                                //for missed delayed notifications, only log missed if not clicked and only cancel if not clicked (and therefore cnaceled)
+                                else if(id == 0 && didMissDelayedNotification){
+                                    console.log("@onTrigger: didMissDelayedNotification = " + didMissDelayedNotification);
+                                    hasMissedNotification = true;
+                                    addToMissedNotifications(2, triggerTime);
+                                    window.plugin.notification.local.cancel(id);
+                                }
+
+                        }
+                        //Need to set boolean to remain at #wakeup, regardless of whether or not the user leaves the app during
+                        //wakeup alarm
+                        else if(id == -99 && didMissWakeUp){
+                            wakeUpFiring = false;
+                            window.plugin.notification.local.cancel(id);
+                        }
+                        else if(id == -1)
+                            window.plugin.notification.local.cancel(id);
+
+                    }, (180 * 1000));
+                //}
+
             };
 
             window.plugin.notification.local.onclick = function(id, state, json){
@@ -1433,37 +1442,39 @@
                 console.log('\n clicking notification #' + id);
                 //notificationTime = JSON.parse(json).date;
 
-                //When clicking on a delayed notification
-                if(id == 0){
-                    $.mobile.navigate('#delay');
-                    didMissDelayedNotification = false;
-                    startedRandomPromptSurvey = true;
-                    finishedRandomPromptSurvey = false;
-                }
+                //if(id != serviceNotificationID){
 
-                //When clicking on a test notification
-                else if(id == -1){
-                    $.mobile.navigate("#login");
-                    takingTestSurvey = true;
-                    startedRandomPromptSurvey = false;
-                    finishedRandomPromptSurvey = false;
-                }
+                    //When clicking on a delayed notification
+                    if(id == 0){
+                        $.mobile.navigate('#delay');
+                        didMissDelayedNotification = false;
+                        startedRandomPromptSurvey = true;
+                        finishedRandomPromptSurvey = false;
+                    }
 
-                //When clicking on a wakeup notification
-                else if(id == -99){
-                    $.mobile.navigate("#wakeup");
-                    startedRandomPromptSurvey = false;
-                    finishedRandomPromptSurvey = false;
-                }
+                    //When clicking on a test notification
+                    else if(id == -1){
+                        $.mobile.navigate("#login");
+                        takingTestSurvey = true;
+                        startedRandomPromptSurvey = false;
+                        finishedRandomPromptSurvey = false;
+                    }
 
-                //When clicking on a standard, untouched notification
-                else{
-                    $.mobile.navigate('#delay');
-                    startedRandomPromptSurvey = true;
-                    finishedRandomPromptSurvey = false;
-                    didMissNotificationArr[parseInt(id)] = false;
-                }
+                    //When clicking on a wakeup notification
+                    else if(id == -99){
+                        $.mobile.navigate("#wakeup");
+                        startedRandomPromptSurvey = false;
+                        finishedRandomPromptSurvey = false;
+                    }
 
+                    //When clicking on a standard, untouched notification
+                    else{
+                        $.mobile.navigate('#delay');
+                        startedRandomPromptSurvey = true;
+                        finishedRandomPromptSurvey = false;
+                        didMissNotificationArr[parseInt(id)] = false;
+                    }
+                //}
                 //test if the clicked notification is from the reference page... in which case no need to enable auto survey
 
             };
@@ -1502,12 +1513,40 @@
 
             clearPriorNotifications(function(){
                 addNewNotifications(function(){
+                    //fireServiceNotification('ACTIVE');
                     formNotificationString(writeToNotificationFile);
                 });
             });
 
+            //console.log("currentState: " + currentState + " typeOf: " + typeof(currentState));
         }
 
+        //TESTING:    Doesn't work...
+        //ongoing notification to bring app to foreground priority... so Android won't suspend the app and kill my code...
+
+        /*
+        function fireServiceNotification(appStatus){
+            //window.plugin.notification.local.cancel(serviceNotificationID);
+            if(appStatus == 'ACTIVE'){}
+
+            else if(appStatus == 'DELAYED'){}
+
+            else if(appStatus == 'ASLEEP'){}
+
+            else if(appStatus == 'SUSPENDED'){}
+
+
+            window.plugin.notification.local.add({
+                id:         serviceNotificationID.toString(),  // A unique id of the notifiction
+                message:    "Status: " + appStatus,  // The message that is displayed
+                title:      "Survey Application",  // The title of the message
+                badge:      serviceNotificationID,  // Displays number badge to notification
+                sound:      null,  // A sound to be played
+                //autoCancel: false, // Setting this flag and the notification is automatically canceled when the user clicks it
+                ongoing:    true // Prevent clearing of notification (Android only)
+            });
+        }
+        */
 
 
 
@@ -3512,7 +3551,7 @@
                             beforeTobEmoSurveyBData.bangry + delimiter +
                             beforeTobEmoSurveyCData.bfrust + delimiter +
                             beforeTobEmoSurveyCData.birritbl + delimiter +
-                            beforeTobEmoSurveyCData.bconfdnt + delimiter );
+                            beforeTobEmoSurveyCData.bconfdnt);
 
             writeToTobaccoUseIntFile(surveyString+ '\n', true, function(){
                 resetSurveyWidgets();
